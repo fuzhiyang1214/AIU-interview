@@ -1,0 +1,38 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+
+# ===== Node / 前端 =====
+node_modules/
+dist/
+build/
+
+# ===== 训练产物（体积大，切勿入库） =====
+runs/
+*.pt
+*.onnx
+*.engine
+*.weights
+!(runs/keep)   # 如确有需要保留的小权重，单独放行
+
+# ===== 数据集 =====
+data/
+datasets/
+*.zip
+*.tar.gz
+
+# ===== 密钥 / 环境变量 =====
+.env
+.env.local
+*.pem
+*.key
+
+# ===== 日志 & 系统文件 =====
+*.log
+logs/
+.DS_Store
+Thumbs.db
