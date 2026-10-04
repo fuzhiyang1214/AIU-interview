@@ -20,6 +20,8 @@
 | 模型存放 | `D:\OllamaModels`（通过 `OLLAMA_MODELS` 从 C 盘迁出） |
 | 服务地址 | `http://127.0.0.1:11434` |
 
+> 表中 Ollama 版本为**测试当日（2026-10-03）的实际版本**。该实例次日因自动升级中断被重装为 **v0.35.1**（模型与推理链路未受影响，`ollama ps` 仍为 100% GPU）；如需最新版本下的数据，重跑 `bench.sh` 即可。
+
 ## 2. 测试方法
 
 **为什么用 HTTP API 而不是 `ollama run`**：CLI 交互会话会累积上下文，导致两轮请求的 prompt token 数不一致（早期实测出现过 37 与 45 的情况），改用 API 单次请求可保证两轮输入完全一致。
@@ -81,7 +83,14 @@
 
 ## 7. 截图
 
+**① 测试环境** —— `nvidia-smi` 与 `ollama --version` 同屏
 
-> - `images/env-gpu.png` —— `nvidia-smi` + `ollama --version` 同屏
-> - `images/ollama-ps.png` —— `ollama ps` 的 `100% GPU` 与显存占用
-> - `images/chat-demo.png` —— 一次真实对话效果
+![测试环境](images/env-gpu.png)
+
+**② 模型驻留状态** —— `ollama ps` 显示 `100% GPU` 与 5.0 GB 显存占用
+
+![模型驻留状态](images/ollama-ps.png)
+
+**③ 真实对话效果** —— 一次完整问答
+
+![真实对话效果](images/chat-demo.png)

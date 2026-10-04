@@ -9,7 +9,24 @@
 # ============================================================
 set -u
 
-OLLAMA_BIN="${OLLAMA_BIN:-/c/Users/FU/AppData/Local/Programs/Ollama/ollama.exe}"
+# ollama 可执行文件：优先取 PATH，找不到再试常见安装位置；均可用 OLLAMA_BIN= 覆盖
+find_ollama() {
+    local found
+    found="$(command -v ollama 2>/dev/null | tr -d '\r')"
+    [ -n "$found" ] && { echo "$found"; return; }
+    for c in "$HOME/AppData/Local/Programs/Ollama/ollama.exe" \
+             "/c/Program Files/Ollama/ollama.exe" \
+             "/usr/local/bin/ollama" "/usr/bin/ollama"; do
+        [ -x "$c" ] && { echo "$c"; return; }
+    done
+}
+
+OLLAMA_BIN="${OLLAMA_BIN:-$(find_ollama)}"
+if [ -z "$OLLAMA_BIN" ]; then
+    echo "错误：找不到 ollama。请把它加入 PATH，或指定 OLLAMA_BIN=/path/to/ollama" >&2
+    exit 1
+fi
+
 PYTHON_BIN="${PYTHON_BIN:-python}"
 MODEL="qwen2.5:7b"
 PROMPT="请用200字介绍人工智能的发展历史、当前现状和未来趋势。"

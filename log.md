@@ -11,7 +11,7 @@
 - 初步学习如何使用Github创建Reposity
 - 学习如何使用git
 - 学习如何使用官方提供的Github Desktop进行项目管理
-- 创建llm，yolo文件夹 分别存放本地部署大模型和yolo跑通所需要的项目文件
+- 创建[llm](llm/)，yolo文件夹 分别存放本地部署大模型和yolo跑通所需要的项目文件
 - 创建说明文件与日志
 #### 基本信息与安装
 - 电脑基础配置：RTX 5070 Laptop 8GB ＋ 24GB DDR5 RAM
@@ -63,15 +63,80 @@ eval rate:            60.70 tokens/s
 
 ### 本日使用AI模型及Agent : Workbuddy 5.6.2 （使用内置Deepseek V4.1-flash模型）
 
-### 任务1-1（补充）任务进展
-- 在llm/中加入test文件夹 存放与本地部署大模型的对话与测试相关截图
-- **重跑测试** 截图放入test文件夹
-- 创建test_report文件（*AI测试报告*）
-- 创建test_README（*AI测试说明文件*）
-- 在llm/根目录创建llm_README说明文件（*整个大模型部署、智能体搭建环节的说明文件*）
-- 初步搭建README（*项目总体说明文件*）框架
+### 任务1-1（补充收尾）
+- 在[llm/](llm/)中加入[test](llm/test/)文件夹 存放与本地部署大模型的对话与测试相关截图
+- **重跑测试** 截图放入[test](llm/test/)文件夹
+- 创建[test_report](llm/test/test_report.md)文件（*AI测试报告*）
+- 创建[test_README](llm/test/test_README.md)（*AI测试说明文件*）
+- 在[llm/](llm/)根目录创建[llm_README](llm/llm_README.md)说明文件（*整个大模型部署、智能体搭建环节的说明文件*）
+- 初步搭建[README](README.md)（*项目总体说明文件*）框架
 - 测试报告、说明文件编写、复现脚本主力为WorkBuddy 
 - 对AI生成的说明文件与报告进行删繁就简 同时修改一下表达
 
 
 ### 任务1-2 本地智能体搭建
+#### 准备部分
+- 采用Dify本地部署方案（AI最推荐方案）
+- 第一步 通过终端命令安装Docker Desktop
+- (*此后摸鱼 遂24点已过*)
+
+## 2026-10-04
+### 本日使用AI模型及Agent : Workbuddy 5.6.2 （使用内置Deepseek V4.1-flash模型）
+
+
+### 任务1-2 本地智能体搭建（续）
+#### 准备部分（续）
+- 第二步 通过终端命令拉取并下载Dify
+- 第三步 创建Dify管理员账号，配置供应商为Ollama，添加qwen2.5:7b模型，自此准备工作告一段落
+- 第四步 在[llm](llm/)根目录下创建[agent](llm/agent/)文件夹，存放代码、程序、测试截图等内容
+#### 实践部分
+- 考虑到实践难度 选择Cli和Web应用形式
+- 在完成最麻烦的下载与配置之后 实践部分实际上更简单 交给Agent搓一下代码就行
+- 成品即为 [cli.py](llm/agent/cli.py)(Cli)和[index.html](llm/agent/index.html)(web形式)
+- 为了隐私 没有直接写出来API密钥（笑）
+- 进行Cli跑通测试 在powershell中输入指令调用大模型
+- 进行Web网页对话测试
+#### 核验检查
+- 根据会长大人指示，先进行人工自查，再输入他给的提示词封装程序，编写REAMDE\
+以便增加项目可读性
+#### 遇到的问题？
+##### 准备阶段
+- 终端拉取Dify镜像文件时报错，后来查证到原因是
+```
+WorkBuddy:
+
+先认错：那个端口是假的
+
+54881 是我从我这边的运行环境里读到的变量值，不是你机器上的。我没核实就让你填了——结果 Docker 拿着一个没人监听的端口去连，当然是 connection refused，十几个镜像全军覆没。
+```
+- 由于AI幻觉，错误地引导我去Docker Desktop的Resource界面配置代理（假端口）
+- 重新改回正确端口后，下载仍然报错，这次是DNS污染造成的
+- 尝试科学上网，在AI指导下打开Allow LAN，更改Docker配置后 终于拉取成功
+
+##### 实践阶段
+- 跑通Cli时 当我输入
+```
+cd C:\Users\FU\Desktop\ai-interview\llm\agent
+$env:DIFY_API_KEY="保密"
+"你好，用一句话说明你是谁`n我刚才问了你什么" | python cli.py
+```
+- 得到回答
+```
+你好！看起来你输入了一些无法辨识的符号。能告诉我具体的问题或需要帮助的内容吗？我会尽力提供帮助。
+```
+- 这实际上是因为 *Windows PowerShell 5.1 的 $OutputEncoding 默认是 US-ASCII* 也就是说中文输进去会变成乱码
+
+- 添加如下语句
+```
+$OutputEncoding = New-Object System.Text.UTF8Encoding   # 送出去的
+$env:PYTHONUTF8 = "1"                                    # 收进来的
+"你好`n我刚才问了你什么" | python cli.py
+```
+即可正常回答问题
+
+- 测试Web对话时发生报错`转发失败: 'latin-1' codec can't encode characters in position 11-14: ordinal not in range(256)`
+- 原因：一行环境变量我直接输入的是`$env:DIFY_API_KEY = "app-你的密钥" `
+一开始是为了保密，但后来测试忘记输入真实的APIkey了。。。
+
+
+

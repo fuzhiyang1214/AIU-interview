@@ -9,7 +9,7 @@
 | GPU | NVIDIA RTX 5070 Laptop（8151 MB 显存） |
 | 驱动 | 610.74 |
 | 内存 | 24 GB DDR5 |
-| Ollama | v0.35.0 |
+| Ollama | v0.35.1 |
 | 模型 | qwen2.5:7b（7.6B / Q4_K_M / 4.7 GB） |
 | 模型存放 | `D:\OllamaModels`（用 `OLLAMA_MODELS` 从 C 盘迁出） |
 | 服务地址 | `http://127.0.0.1:11434` |
@@ -51,7 +51,8 @@ curl --noproxy '*' http://127.0.0.1:11434/api/generate \
   -d '{"model":"qwen2.5:7b","prompt":"你好","stream":false}'
 ```
 
-> `--noproxy '*'` 是必需的：本机 `HTTPS_PROXY` 指向本地代理，不加这个参数会把发给 `127.0.0.1` 的请求也塞进代理，导致连不上。
+> `--noproxy '*'` 用于避免发给 `127.0.0.1` 的请求被环境里残留的代理设置带偏。
+> 本机实测并无代理在运行，仍保留该参数以防环境变化。
 
 **⑤ 复现性能测试**
 
@@ -65,5 +66,13 @@ bash llm/test/bench.sh
 
 | 路径 | 内容 |
 |---|---|
+| `agent/` | 智能体与 API 接入：CLI、Web 后端/前端 —— 见 [`agent/agent_README.md`](agent/agent_README.md) |
 | `test/` | 测试证据：报告、API 原始返回、复现脚本、截图 —— 见 [`test/test_README.md`](test/test_README.md) |
+
+## 进度
+
+| 日期 | 内容 |
+|---|---|
+| 2026-10-03 | **任务 1-1**：Ollama 部署 → 模型目录迁至 D 盘 → 拉取 `qwen2.5:7b` → 服务化 → 性能测试（见 [`test/test_report.md`](test/test_report.md)） |
+| 2026-10-04 | **任务 1-2**：Dify 自部署 → Ollama 作 model provider → API 接入 → CLI / Web 应用（见 [`agent/agent_README.md`](agent/agent_README.md)） |
 
