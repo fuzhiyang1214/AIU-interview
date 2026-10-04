@@ -1,7 +1,7 @@
 # AIU创智部二面实战部分 说明文件
 
-> 进度：任务1-1（本地大模型）✅ 已完成 ｜ 任务1-2（智能体搭建）✅ 已完成\
-> 后续任务：yolo、进阶...(To be continued)
+> 进度：任务1-1（本地大模型）✅ ｜ 任务1-2（智能体搭建）✅ ｜ 任务二（YOLO）🚧 环境就绪，待标注与训练\
+> 后续任务：进阶...(To be continued)
 
 ## 目录结构
 
@@ -17,8 +17,8 @@ ai-interview/
 │  │  └─ index.html        Web 前端（只做 UI 与订阅）
 │  └─ test/                测试证据：报告、原始数据、复现脚本、截图
 │     └─ test_README.md    本目录说明
-├─ yolo/                   视觉处理部分（任务二，尚未开始）
-│  └─ yolo_README.md       本目录说明
+├─ yolo/                   视觉处理部分（任务二：训练与实时推理）
+│  └─ yolo_README.md       本目录说明与环境/路线记录
 ├─ log.md                  工程日志（按天记录进展与卡点）
 └─ README.md               说明文件
 ```
@@ -51,6 +51,27 @@ ai-interview/
 
 ![运行状态](llm/test/images/ollama-ps.png)
 
+## 任务二 · YOLO 训练与实时推理 🚧
+
+**路线**：沿用出题人博客《从零开始搭建自己的 YOLO》及配套仓库 [`Linmoqian/yolo_train`](https://github.com/Linmoqian/yolo_train) 的现成流程 —— `json2txt.py`（标注转换）→ `DataProess.py`（划分数据集）→ `main.py`（训练），本机只在**环境**与**数据**上做适配，流程本身不改。
+
+**运行环境**（独立虚拟环境，不占系统盘）
+
+| 项 | 值 |
+|---|---|
+| 虚拟环境 | `D:\envs\yolo`（官方 Python 3.14 + `venv`） |
+| PyTorch | 2.11.0+cu128 ｜ CUDA 12.8（`cuda.is_available() = True`） |
+| Ultralytics | 8.4.173 ｜ OpenCV 5.0.0 |
+| GPU | RTX 5070 Laptop（sm_120，必须 cu128 轮子） |
+| 标注工具 | X-AnyLabeling（`Windows-CUDA12` 版） |
+| 数据集 | `your_data/` 10 张图，待标注，`nc=2`（cat / dog） |
+
+> 为什么不用 Miniforge：本机 C 盘紧张，Miniforge 默认装 C 盘且体积大；`venv` 可整体建在 D 盘，隔离、可删。
+
+**当前状态**：环境就绪（torch + ultralytics 装好，GPU 验证通过），素材与脚本已定位；**下一步**：打标 → 转标注 → 划分 → 训练 → 摄像头实时推理。
+
+详细步骤与卡点见 [`yolo/yolo_README.md`](yolo/yolo_README.md)。
+
 ## 怎么跑起来
 
 需要 Windows + 一张 ≥ 8 GB 显存的 N 卡；智能体链另外需要 Docker Desktop。
@@ -74,13 +95,18 @@ python server.py                      # Web 界面 http://127.0.0.1:8000
 
 # ④ 复现性能测试
 bash llm/test/bench.sh
+
+# ⑤ 任务二 · YOLO（独立虚拟环境，与上面的 llm 链互不干扰）
+source /d/envs/yolo/Scripts/activate        # PowerShell 用：D:\envs\yolo\Scripts\Activate.ps1
+python -c "import torch; print(torch.cuda.is_available())"   # 应输出 True
+#   后续：X-AnyLabeling 打标 → python script/json2txt.py → python script/DataProess.py → python main.py
 ```
 
 各子链路的完整步骤见对应目录：
 
 - **大模型链** → [`llm/llm_README.md`](llm/llm_README.md)（安装 → 迁模型目录 → 拉模型 → 服务化 → 测试）
 - **智能体链** → [`llm/agent/agent_README.md`](llm/agent/agent_README.md)（Ollama 作 provider → Dify 应用 → API → CLI / Web）
-- **视觉链** → [`yolo/yolo_README.md`](yolo/yolo_README.md)（任务二，尚未开始）
+- **视觉链** → [`yolo/yolo_README.md`](yolo/yolo_README.md)（venv 环境 → 标注 → 训练 → 实时推理）
 
 ## 进度
 
@@ -89,6 +115,7 @@ bash llm/test/bench.sh
 | 10-01 | 仓库初始化：目录骨架、README、`.gitignore`、工程日志 |
 | 10-03 | **任务 1-1**：Ollama 部署、模型目录迁至 D 盘、qwen2.5:7b 服务化、性能测试与报告 |
 | 10-04 | **任务 1-2**：Dify 自部署 → Ollama 作 model provider → API 接入；CLI 与 Web 两个自研应用跑通；代码按模块化重组 |
+| 10-05 | **任务二启动**：对照出题人博客与仓库确定 YOLO 路线；建独立 venv（`D:\envs\yolo`），装好 torch 2.11.0+cu128 与 ultralytics，GPU 验证通过；定位素材与脚本，待打标 |
 
 逐日过程与卡点见 [`log.md`](log.md)。
 
@@ -121,5 +148,8 @@ bash llm/test/bench.sh
 
 ## 待办
 
-
-- [ ] 任务二 YOLO 训练与实时推理
+- [ ] 用 X-AnyLabeling 标注 `your_data/` 10 张图（类名与 `dataset.yaml` 一致）
+- [ ] `json2txt.py` 转标注 → `DataProess.py` 划分数据集
+- [ ] 训练（`main.py`：yolov8n / imgsz=640 / epochs=100）并留存曲线与权重
+- [ ] 调用摄像头做实时推理 demo
+- [ ] 把训练产物与截图补进 README / log

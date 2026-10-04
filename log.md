@@ -138,5 +138,12 @@ $env:PYTHONUTF8 = "1"                                    # 收进来的
 - 原因：一行环境变量我直接输入的是`$env:DIFY_API_KEY = "app-你的密钥" `
 一开始是为了保密，但后来测试忘记输入真实的APIkey了。。。
 
+### 任务2-1 yolo的跑通
 
+### 准备阶段
 
+- 参考学长博客`https://blog.csdn.net/linmoqian/article/details/157656782?spm=1001.2014.3001.5501`
+- 对照自身设备环境，决定对其中内容做出取舍 将博客喂给Workbuddy，与其共同研究出来一条适应当前设备环境的技术路线
+- Workbuddy指出用Miniforge下载对RTX 5070可能存在风险 建议我用venv下载管理 先试一试这条路线
+- 下载成功 
+- 下载标注软件X-AnyLabeling，这里直接下载CUDA12版本 直接集成GPU加速功能
