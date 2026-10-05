@@ -1,6 +1,6 @@
 # AIU创智部二面实战部分 说明文件
 
-> 进度：任务1-1（本地大模型）✅ ｜ 任务1-2（智能体搭建）✅ ｜ 任务二（YOLO）🚧 环境就绪，待标注与训练\
+> 进度：任务1-1（本地大模型）✅ ｜ 任务1-2（智能体搭建）✅ ｜ 任务二（YOLO）🚧 训练跑通，待实时推理\
 > 后续任务：进阶...(To be continued)
 
 ## 目录结构
@@ -18,7 +18,13 @@ ai-interview/
 │  └─ test/                测试证据：报告、原始数据、复现脚本、截图
 │     └─ test_README.md    本目录说明
 ├─ yolo/                   视觉处理部分（任务二：训练与实时推理）
-│  └─ yolo_README.md       本目录说明与环境/路线记录
+│  ├─ yolo_README.md       本目录说明（环境、路线、卡点、步骤）
+│  ├─ main.py              训练入口（组装模型 + 配置 + 参数）
+│  ├─ config/              train.yaml（超参数）｜ dataset.yaml（数据与类别）
+│  ├─ script/              json2txt.py（标注转换）｜ DataProess.py（数据集划分）
+│  ├─ your_data/           原始图片与标注（json / txt）
+│  └─ first_train/         第一次训练的产物归档（说明 + 截图 + 曲线）
+│     └─ first_train_README.md
 ├─ log.md                  工程日志（按天记录进展与卡点）
 └─ README.md               说明文件
 ```
@@ -64,11 +70,21 @@ ai-interview/
 | Ultralytics | 8.4.173 ｜ OpenCV 5.0.0 |
 | GPU | RTX 5070 Laptop（sm_120，必须 cu128 轮子） |
 | 标注工具 | X-AnyLabeling（`Windows-CUDA12` 版） |
-| 数据集 | `your_data/` 10 张图，待标注，`nc=2`（cat / dog） |
+| 数据集 | 10 张示例图 → train 6 / val 3 / test 1，`nc=2`（cat / dog） |
 
-> 为什么不用 Miniforge：本机 C 盘紧张，Miniforge 默认装 C 盘且体积大；`venv` 可整体建在 D 盘，隔离、可删。
+**三处对出题人原版的必要偏离**（详细理由见 [`yolo/yolo_README.md`](yolo/yolo_README.md)）：
 
-**当前状态**：环境就绪（torch + ultralytics 装好，GPU 验证通过），素材与脚本已定位；**下一步**：打标 → 转标注 → 划分 → 训练 → 摄像头实时推理。
+1. **必须用 cu128 的 wheel** —— RTX 5070 是 Blackwell（sm_120），低版本 CUDA 预编译包会报 `no kernel image is available`；
+2. **用 `venv` 而非 Miniforge** —— 本机 C 盘紧张，Miniforge 默认装 C 盘且体积大，`venv` 可整体建在 D 盘；
+3. **`main.py` 加 `if __name__ == '__main__':` 保护** —— Windows 下 DataLoader 用 spawn 起子进程会重新导入 `__main__`，出题人原版无入口保护，会二次执行 `train()` 并报 `DataLoader worker ... exited unexpectedly`。
+
+**第一次训练（示例 10 张图，参数全默认）**：100 epochs，耗时约 59 s，mAP50 = 0.866。
+
+> ⚠️ 验证集只有 3 张图，指标仅用于确认**管道打通**，不代表模型真实能力。
+
+![训练曲线](yolo/first_train/images/results.png)
+
+产物（截图、曲线、混淆矩阵）归档在 [`yolo/first_train/`](yolo/first_train/first_train_README.md)；**当前进度**：训练已跑通，**下一步**：调用摄像头实时推理。
 
 详细步骤与卡点见 [`yolo/yolo_README.md`](yolo/yolo_README.md)。
 
@@ -97,9 +113,10 @@ python server.py                      # Web 界面 http://127.0.0.1:8000
 bash llm/test/bench.sh
 
 # ⑤ 任务二 · YOLO（独立虚拟环境，与上面的 llm 链互不干扰）
-source /d/envs/yolo/Scripts/activate        # PowerShell 用：D:\envs\yolo\Scripts\Activate.ps1
-python -c "import torch; print(torch.cuda.is_available())"   # 应输出 True
-#   后续：X-AnyLabeling 打标 → python script/json2txt.py → python script/DataProess.py → python main.py
+cd yolo                                     # 必须在本目录执行：脚本里用的是相对路径
+D:\envs\yolo\Scripts\python.exe script\json2txt.py      # json 标注 → YOLO txt
+D:\envs\yolo\Scripts\python.exe script\DataProess.py    # 划分 train / val / test
+D:\envs\yolo\Scripts\python.exe main.py                 # 训练，产出 runs/.../weights/best.pt
 ```
 
 各子链路的完整步骤见对应目录：
@@ -115,7 +132,8 @@ python -c "import torch; print(torch.cuda.is_available())"   # 应输出 True
 | 10-01 | 仓库初始化：目录骨架、README、`.gitignore`、工程日志 |
 | 10-03 | **任务 1-1**：Ollama 部署、模型目录迁至 D 盘、qwen2.5:7b 服务化、性能测试与报告 |
 | 10-04 | **任务 1-2**：Dify 自部署 → Ollama 作 model provider → API 接入；CLI 与 Web 两个自研应用跑通；代码按模块化重组 |
-| 10-05 | **任务二启动**：对照出题人博客与仓库确定 YOLO 路线；建独立 venv（`D:\envs\yolo`），装好 torch 2.11.0+cu128 与 ultralytics，GPU 验证通过；定位素材与脚本，待打标 |
+| 10-05 | **任务二启动**：确定 YOLO 路线；建独立 venv（`D:\envs\yolo`），装好 torch 2.11.0+cu128 与 ultralytics；标注 10 张图并完成划分（train 6 / val 3 / test 1） |
+| 10-06 | **任务二训练跑通**：定位并修复 Windows 多进程入口保护问题（`main.py` 加 `if __name__ == '__main__':`）；完成 100 epochs 训练（mAP50 0.866），产物归档至 `yolo/first_train/` |
 
 逐日过程与卡点见 [`log.md`](log.md)。
 
@@ -144,12 +162,10 @@ python -c "import torch; print(torch.cuda.is_available())"   # 应输出 True
 
 
 
-
-
 ## 待办
 
-- [ ] 用 X-AnyLabeling 标注 `your_data/` 10 张图（类名与 `dataset.yaml` 一致）
-- [ ] `json2txt.py` 转标注 → `DataProess.py` 划分数据集
-- [ ] 训练（`main.py`：yolov8n / imgsz=640 / epochs=100）并留存曲线与权重
+- [x] 用 X-AnyLabeling 标注 `your_data/` 10 张图（类名与 `dataset.yaml` 一致）
+- [x] `json2txt.py` 转标注 → `DataProess.py` 划分数据集
+- [x] 训练（`main.py`：yolov8n / imgsz=640 / epochs=100）并留存曲线与权重
+- [x] 训练产物与截图归档（`yolo/first_train/`）
 - [ ] 调用摄像头做实时推理 demo
-- [ ] 把训练产物与截图补进 README / log

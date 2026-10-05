@@ -1,0 +1,27 @@
+# YOLO 数据集配置
+
+path: dataset
+
+train: images/train
+val: images/val
+test: images/test
+
+# 类别信息
+nc: 2  # 类别数量
+names:
+  0: cat
+  1: dog
+
+# 目录结构
+# datasets/my_dataset/
+# ├── images/
+# │   ├── train/
+# │   ├── val/
+# │   └── test/
+# └── labels/
+#     ├── train/
+#     ├── val/
+#     └── test/
+
+# 标注格式: class_id center_x center_y width height
+# 示例: 0 0.5 0.5 0.3 0.4

@@ -147,3 +147,75 @@ $env:PYTHONUTF8 = "1"                                    # 收进来的
 - Workbuddy指出用Miniforge下载对RTX 5070可能存在风险 建议我用venv下载管理 先试一试这条路线
 - 下载成功 
 - 下载标注软件X-AnyLabeling，这里直接下载CUDA12版本 直接集成GPU加速功能
+
+## 2026-10-05
+### 本日使用AI模型及Agent : Workbuddy 5.6.2 （使用内置Deepseek V4.1-flash模型）
+### 任务2-1 yolo的跑通（续）
+- 沿用博客中技术路线 使用给的10张示例图进行训练
+- 先用X-AnyLabeling进行标注
+- 标注完毕 运行脚本（此处用Agent辅助运行~）
+- 类别映射修改 → 数据集划分 → 开始训练！
+- 刚开始训练 一直报错
+- 询问AI后发现 是代码中少了一行保护（详见遇到的问题）
+- 修改main.py 训练成功!(用的默认参数)
+### 遇到的问题？
+- 终端运行main.py时出现了报错
+```
+C:\Users\FU\Desktop\ai-interview\yolo\main.py:19: SyntaxWarning: "\ " is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\ "? A raw string is also an option.
+  O\ = /O
+```
+- 询问AI后 他说：
+```
+这个警告跟训练没关系，是学长 main.py 里那段"佛祖保佑"ASCII art 引起的。
+```
+- 也就是这个大佛。。。
+```
+# 佛祖保佑，永无BUG
+"""
+                  _ooOoo_
+                 o8888888o
+                 88" . "88
+                 (| -_- |)
+                 O\ = /O
+              ____/`---'\____
+            .' \\| |// `
+           / \\||| : |||// 
+          / _||||| -:- |||||- 
+          | | \\\ - /// | |
+          | \_| ''\---/'' | |
+          \ .-\__ `-` ___/-. /
+        ___`. .' /--.--\ `. . __
+     ."" '< `.___\_<|>_/___.' >'""
+    | | : `- \`.;`\ _ /`;.`/ - ` : | |
+    \ \ `-. \_ __\ /__ _/ .-` / /
+======`-.____`-.___\_____/___.-`____.-'======
+                  `=---='
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+           佛祖保佑 永无BUG
+"""
+```
+- 里面的 \ 、\_、\`` 被新版本的Python（我的是3.14） 当成**无效转义序列**。第 19 行正是 O\ = /O`，和报错行号完全对上。
+- 不得已 删掉大佛之后就可以正常运行~（佛祖保佑）
+- 训练时又出现问题！**一直报错**，连续折腾了好几轮
+- 终端报错：
+```
+An attempt has been made to start a new process before the
+current process has finished its bootstrapping phase.
+...
+if name == 'main':
+freeze_support()
+```
+- 真实原因？
+```
+Workbuddy
+
+找到真凶了：不是网络、不是 GPU、不是环境 —— 是 main.py 缺一行保护
+机理（一句话）
+Windows 下 dataloader 用 spawn 起子进程 → 子进程会重新 import __main__ → 而 main.py 顶层没有 if __name__ == '__main__': 保护，于是子进程又跑了一遍 YOLO().train() → 无限套娃 → worker 崩溃。
+
+需要加一行
+if __name__ == '__main__':
+    main()
+```
+- 再次终端运行 终于成功
+
