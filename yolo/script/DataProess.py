@@ -1,4 +1,4 @@
-"""数据集划分脚本：从 your_data 划分到 dataset"""
+"""数据集划分脚本：从 your_data2 划分到 dataset2"""
 
 import os
 import random
@@ -7,8 +7,8 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent
 
-INPUT_DIR = SCRIPT_DIR / '../your_data'   # 源数据（放你的图片和json的地方，全复制到这，注意先运行json2txt.py）
-OUTPUT_DIR = SCRIPT_DIR / '../dataset'   # 输出目录（自动划分）
+INPUT_DIR = SCRIPT_DIR / '../your_data2'  # 源数据（放你的图片和json的地方，全复制到这，注意先运行json2txt.py）
+OUTPUT_DIR = SCRIPT_DIR / '../dataset2'   # 输出目录（自动划分）
 
 # 改这里的比例
 VAL_RATE = 0.3   # 验证集占比

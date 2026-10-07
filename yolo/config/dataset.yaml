@@ -1,19 +1,18 @@
 # YOLO 数据集配置
 
-path: dataset
+path: dataset2
 
 train: images/train
 val: images/val
 test: images/test
 
 # 类别信息
-nc: 2  # 类别数量
+nc: 1  # 类别数量
 names:
-  0: cat
-  1: dog
+  0: shoe
 
 # 目录结构
-# datasets/my_dataset/
+# dataset2/
 # ├── images/
 # │   ├── train/
 # │   ├── val/

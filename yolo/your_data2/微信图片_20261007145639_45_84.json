@@ -1,0 +1,69 @@
+{
+  "version": "4.1.0",
+  "flags": {},
+  "checked": false,
+  "shapes": [
+    {
+      "label": "shoe",
+      "score": null,
+      "points": [
+        [
+          93.15909090909093,
+          839.7954545454545
+        ],
+        [
+          266.45454545454555,
+          839.7954545454545
+        ],
+        [
+          266.45454545454555,
+          880.7045454545455
+        ],
+        [
+          93.15909090909093,
+          880.7045454545455
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rectangle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    },
+    {
+      "label": "shoe",
+      "score": null,
+      "points": [
+        [
+          290.8863636363637,
+          724.4545454545455
+        ],
+        [
+          456.79545454545456,
+          724.4545454545455
+        ],
+        [
+          456.79545454545456,
+          802.2954545454545
+        ],
+        [
+          290.8863636363637,
+          802.2954545454545
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rectangle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    }
+  ],
+  "imagePath": "微信图片_20261007145639_45_84.png",
+  "imageData": null,
+  "imageHeight": 883,
+  "imageWidth": 667
+}

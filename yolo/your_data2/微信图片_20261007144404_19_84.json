@@ -1,0 +1,40 @@
+{
+  "version": "4.1.0",
+  "flags": {},
+  "checked": false,
+  "shapes": [
+    {
+      "label": "shoe",
+      "score": null,
+      "points": [
+        [
+          159.672131147541,
+          44.09836065573767
+        ],
+        [
+          1121.967213114754,
+          44.09836065573767
+        ],
+        [
+          1121.967213114754,
+          1194.0983606557377
+        ],
+        [
+          159.672131147541,
+          1194.0983606557377
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rectangle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    }
+  ],
+  "imagePath": "微信图片_20261007144404_19_84.jpg",
+  "imageData": null,
+  "imageHeight": 1280,
+  "imageWidth": 1280
+}

@@ -1,6 +1,6 @@
 # AIU创智部二面实战部分 说明文件
 
-> 进度：任务1-1（本地大模型）✅ ｜ 任务1-2（智能体搭建）✅ ｜ 任务二（YOLO）🚧 训练跑通，待实时推理\
+> 进度：任务1-1（本地大模型）✅ ｜ 任务1-2（智能体搭建）✅ ｜ 任务二（YOLO）✅ 两轮训练 + 摄像头实时推理均已实机跑通\
 > 后续任务：进阶...(To be continued)
 
 ## 目录结构
@@ -21,10 +21,14 @@ ai-interview/
 │  ├─ yolo_README.md       本目录说明（环境、路线、卡点、步骤）
 │  ├─ main.py              训练入口（组装模型 + 配置 + 参数）
 │  ├─ config/              train.yaml（超参数）｜ dataset.yaml（数据与类别）
-│  ├─ script/              json2txt.py（标注转换）｜ DataProess.py（数据集划分）
-│  ├─ your_data/           原始图片与标注（json / txt）
-│  └─ first_train/         第一次训练的产物归档（说明 + 截图 + 曲线）
-│     └─ first_train_README.md
+│  ├─ script/              resize.py（图片预处理）｜ json2txt.py（标注转换）｜ DataProess.py（数据集划分）
+│  ├─ your_data/           第一轮数据：示例 10 张（cat / dog）
+│  ├─ your_data2/          第二轮数据：自采 60 张（shoe）
+│  ├─ first_train/         第一次训练的产物归档（说明 + 截图 + 曲线）
+│  │  └─ first_train_README.md
+│  └─ infer/               摄像头实时推理（后端 app.py ｜ 前端 index.html）
+│     ├─ infer_README.md   本目录说明
+│     └─ images/           实时推理验证截图
 ├─ log.md                  工程日志（按天记录进展与卡点）
 └─ README.md               说明文件
 ```
@@ -57,7 +61,7 @@ ai-interview/
 
 ![运行状态](llm/test/images/ollama-ps.png)
 
-## 任务二 · YOLO 训练与实时推理 🚧
+## 任务二 · YOLO 训练与实时推理 ✅
 
 **路线**：沿用出题人博客《从零开始搭建自己的 YOLO》及配套仓库 [`Linmoqian/yolo_train`](https://github.com/Linmoqian/yolo_train) 的现成流程 —— `json2txt.py`（标注转换）→ `DataProess.py`（划分数据集）→ `main.py`（训练），本机只在**环境**与**数据**上做适配，流程本身不改。
 
@@ -67,10 +71,11 @@ ai-interview/
 |---|---|
 | 虚拟环境 | `D:\envs\yolo`（官方 Python 3.14 + `venv`） |
 | PyTorch | 2.11.0+cu128 ｜ CUDA 12.8（`cuda.is_available() = True`） |
-| Ultralytics | 8.4.173 ｜ OpenCV 5.0.0 |
+| Ultralytics | 8.4.173 ｜ OpenCV 5.0.0 ｜ Flask 3.1.3 |
 | GPU | RTX 5070 Laptop（sm_120，必须 cu128 轮子） |
 | 标注工具 | X-AnyLabeling（`Windows-CUDA12` 版） |
-| 数据集 | 10 张示例图 → train 6 / val 3 / test 1，`nc=2`（cat / dog） |
+| 数据集（第一次） | 示例 10 张 ｜ `nc=2`（cat / dog）｜ train 6 / val 3 / test 1 |
+| 数据集（第二次） | **自采 60 张 ｜ `nc=1`（shoe）｜ train 36 / val 18 / test 6** |
 
 **三处对出题人原版的必要偏离**（详细理由见 [`yolo/yolo_README.md`](yolo/yolo_README.md)）：
 
@@ -78,13 +83,32 @@ ai-interview/
 2. **用 `venv` 而非 Miniforge** —— 本机 C 盘紧张，Miniforge 默认装 C 盘且体积大，`venv` 可整体建在 D 盘；
 3. **`main.py` 加 `if __name__ == '__main__':` 保护** —— Windows 下 DataLoader 用 spawn 起子进程会重新导入 `__main__`，出题人原版无入口保护，会二次执行 `train()` 并报 `DataLoader worker ... exited unexpectedly`。
 
-**第一次训练（示例 10 张图，参数全默认）**：100 epochs，耗时约 59 s，mAP50 = 0.866。
+**训练结果**
 
-> ⚠️ 验证集只有 3 张图，指标仅用于确认**管道打通**，不代表模型真实能力。
+| 轮次 | 数据 | 类别 | 耗时 | mAP50 | 归档 |
+|---|---|---|---|---|---|
+| 第一次 | 出题人示例 10 张 | cat / dog | 59 s | 0.866 | [`yolo/first_train/`](yolo/first_train/first_train_README.md) |
+| 第二次 | **自采 60 张鞋子** | shoe | 2.66 min | **0.882** | `yolo/runs/.../train/exp-2` |
+
+> ⚠️ 第一轮验证集仅 3 张图，指标只用于确认**管道打通**；第二轮 60 张仍属小样本，指标仅供参考。
 
 ![训练曲线](yolo/first_train/images/results.png)
 
-产物（截图、曲线、混淆矩阵）归档在 [`yolo/first_train/`](yolo/first_train/first_train_README.md)；**当前进度**：训练已跑通，**下一步**：调用摄像头实时推理。
+**摄像头实时推理** 见 [`yolo/infer/`](yolo/infer/infer_README.md)：Flask 后端 + HTML 前端，严格按规范第 4 条解耦（前端只订阅、后端只计算推送）。
+
+```bash
+cd yolo\infer
+D:\envs\yolo\Scripts\python.exe app.py     # 浏览器打开 http://localhost:8000
+```
+
+实测帧率稳定 **30 FPS**，真鞋与手机屏幕图片均能实时检出：
+
+![真鞋实时检测](yolo/infer/images/01_realtime_shoe.png)
+
+> 过程中踩到一个值得记录的坑：训练图是手机俯拍特写（目标大、光线足），而摄像头是平视且台灯直射导致过曝，
+> 一度出现「真鞋检不出、手机屏幕里的鞋照片反而能检出」的现象 —— 属**域差异**而非代码问题。
+> 避免过曝、让目标占画面 1/3 以上即可正常检出；根治方向是用**同一个摄像头在实际场景补拍数据重训**。
+> 详细排查过程见 [`yolo/yolo_README.md`](yolo/yolo_README.md) 与 [`log.md`](log.md)。
 
 详细步骤与卡点见 [`yolo/yolo_README.md`](yolo/yolo_README.md)。
 
@@ -117,6 +141,10 @@ cd yolo                                     # 必须在本目录执行：脚本�
 D:\envs\yolo\Scripts\python.exe script\json2txt.py      # json 标注 → YOLO txt
 D:\envs\yolo\Scripts\python.exe script\DataProess.py    # 划分 train / val / test
 D:\envs\yolo\Scripts\python.exe main.py                 # 训练，产出 runs/.../weights/best.pt
+
+# ⑥ 摄像头实时推理
+cd yolo\infer
+D:\envs\yolo\Scripts\python.exe app.py                  # 浏览器打开 http://localhost:8000
 ```
 
 各子链路的完整步骤见对应目录：
@@ -134,6 +162,7 @@ D:\envs\yolo\Scripts\python.exe main.py                 # 训练，产出 runs/.
 | 10-04 | **任务 1-2**：Dify 自部署 → Ollama 作 model provider → API 接入；CLI 与 Web 两个自研应用跑通；代码按模块化重组 |
 | 10-05 | **任务二启动**：确定 YOLO 路线；建独立 venv（`D:\envs\yolo`），装好 torch 2.11.0+cu128 与 ultralytics；标注 10 张图并完成划分（train 6 / val 3 / test 1） |
 | 10-06 | **任务二训练跑通**：定位并修复 Windows 多进程入口保护问题（`main.py` 加 `if __name__ == '__main__':`）；完成 100 epochs 训练（mAP50 0.866），产物归档至 `yolo/first_train/` |
+| 10-07 | **任务二收尾**：新增 `yolo/infer/` 摄像头实时推理（Flask + HTML，前后端解耦）与 `script/resize.py`；自采 60 张鞋子图完成标注与第二轮训练（mAP50 0.882）；**实时推理实机验证通过**（30 FPS），并定位「检不出」的域差异问题 |
 
 逐日过程与卡点见 [`log.md`](log.md)。
 
@@ -168,4 +197,6 @@ D:\envs\yolo\Scripts\python.exe main.py                 # 训练，产出 runs/.
 - [x] `json2txt.py` 转标注 → `DataProess.py` 划分数据集
 - [x] 训练（`main.py`：yolov8n / imgsz=640 / epochs=100）并留存曲线与权重
 - [x] 训练产物与截图归档（`yolo/first_train/`）
-- [ ] 调用摄像头做实时推理 demo
+- [x] 调用摄像头做实时推理 demo（`yolo/infer/`）
+- [x] 采集自己的数据（60 张鞋子图）重新训练并用新模型实时推理
+- [ ] 补拍实际推理场景的数据混入重训，改善泛化能力（可选优化）

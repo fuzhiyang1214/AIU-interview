@@ -1,15 +1,20 @@
-"""标注 JSON 转 YOLO TXT 格式（保存在同目录）"""
+"""标注 JSON 转 YOLO TXT 格式（保存在同目录）
+
+用法：把 X-AnyLabeling 导出的 LabelMe 格式 JSON 放在 INPUT_DIR 下，
+再运行本脚本，会在同目录生成同名的 YOLO 格式 .txt。
+"""
 
 import json
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent
 
-INPUT_DIR = SCRIPT_DIR / '../your_data'  # JSON 文件所在目录
+INPUT_DIR = SCRIPT_DIR / '../your_data2'  # JSON 文件所在目录
 # 输出 TXT 保存在同目录
 
 # 类别映射（改成你自己的类别列表，顺序决定 class_id）
-CLASSES = ['cat', 'dog']
+# ⚠️ 必须与 config/dataset.yaml 的 names 同序；标错大小写会被静默丢弃
+CLASSES = ['shoe']
 
 def json_to_yolo(json_path: Path):
     """转换单个 JSON 文件"""
