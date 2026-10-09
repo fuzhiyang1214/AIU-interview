@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<!--
+  harness/web/static/index.html — 前端页面
+
+  职责：只订阅 SSE 事件流并渲染。不含任何 agent 逻辑、不认识任何工具名。
+  输入：GET /events（SSE）、POST /ask（JSON）
+  输出：浏览器界面
+
+  对应出题人规范第 4 条：前端只负责 UI 组织与订阅。
+  事件名与 core/events.py 里 emit 的一一对应：
+    turn_start / model_response / tool_start / tool_end / turn_end / error
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harness</title>
+<style>
+  :root {
+    --bg: #ffffff; --panel: #faf9f6; --line: #e5e3dd;
+    --fg: #1f1e1c; --muted: #7a7873;
+    --purple: #534ab7; --purple-bg: #eeedfe;
+    --teal: #0f6e56; --teal-bg: #e1f5ee;
+    --amber: #854f0b; --amber-bg: #faeeda;
+    --red: #a32d2d; --red-bg: #fcebeb;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 13px/1.6 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    display: flex; flex-direction: column; height: 100vh;
+  }
+
+  header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--panel);
+  }
+  header h1 { font-size: 14px; font-weight: 500; margin: 0; }
+  header .sub { color: var(--muted); font-size: 12px; }
+  header .spacer { flex: 1; }
+  #dot { width: 7px; height: 7px; border-radius: 50%; background: var(--red); }
+  #dot.on { background: #639922; }
+  #status { font-size: 12px; color: var(--muted); }
+
+  #log { flex: 1; overflow-y: auto; padding: 14px; }
+
+  .row { margin-bottom: 8px; display: flex; gap: 8px; }
+  .tag {
+    flex: 0 0 auto; font-size: 11px; padding: 1px 6px; border-radius: 4px;
+    height: fit-content; font-family: var(--mono); white-space: nowrap;
+  }
+  .body { flex: 1; min-width: 0; }
+
+  .user .tag { background: var(--purple-bg); color: var(--purple); }
+  .user .body { font-weight: 500; }
+  .tool .tag { background: var(--amber-bg); color: var(--amber); }
+  .tool .body { font-family: var(--mono); font-size: 12px; word-break: break-all; }
+  .think .tag { background: #f1efe8; color: var(--muted); }
+  .think .body { color: var(--muted); font-size: 12px; }
+  .answer { background: var(--teal-bg); border-left: 2px solid var(--teal);
+            padding: 8px 10px; border-radius: 0 6px 6px 0; margin-bottom: 8px; white-space: pre-wrap; }
+  .err .tag { background: var(--red-bg); color: var(--red); }
+  .err .body { color: var(--red); font-family: var(--mono); font-size: 12px; }
+
+  footer { border-top: 1px solid var(--line); padding: 10px 14px; display: flex; gap: 8px; background: var(--panel); }
+  textarea {
+    flex: 1; resize: none; height: 38px; padding: 9px 10px; font: inherit;
+    border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--fg);
+  }
+  textarea:focus { outline: none; border-color: var(--purple); }
+  button {
+    padding: 0 16px; border: none; border-radius: 8px; cursor: pointer;
+    background: var(--purple); color: #fff; font: inherit; font-weight: 500;
+  }
+  button:disabled { opacity: .45; cursor: default; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Harness</h1>
+  <span class="sub">agent loop 演示</span>
+  <span class="spacer"></span>
+  <span id="dot"></span><span id="status">连接中…</span>
+</header>
+
+<div id="log"></div>
+
+<footer>
+  <textarea id="input" placeholder="输入问题，回车发送（例：北京现在几点？）"></textarea>
+  <button id="send">发送</button>
+</footer>
+
+<script>
+const log = document.getElementById('log');
+const dot = document.getElementById('dot');
+const statusEl = document.getElementById('status');
+const input = document.getElementById('input');
+const sendBtn = document.getElementById('send');
+
+function el(cls, tag, text) {
+  const row = document.createElement('div');
+  row.className = 'row ' + cls;
+  const t = document.createElement('span');
+  t.className = 'tag';
+  t.textContent = tag;
+  const b = document.createElement('div');
+  b.className = 'body';
+  b.textContent = text;
+  row.append(t, b);
+  return row;
+}
+function push(node) {
+  log.appendChild(node);
+  log.scrollTop = log.scrollHeight;
+}
+
+// ---------- 唯一的数据来源：SSE ----------
+const es = new EventSource('/events');
+
+es.onopen = () => { dot.classList.add('on'); statusEl.textContent = '已连接'; };
+es.onerror = () => { dot.classList.remove('on'); statusEl.textContent = '断线重连中…'; };
+
+function on(name, fn) {
+  es.addEventListener(name, e => fn(JSON.parse(e.data)));
+}
+
+on('turn_start', d => {
+  setBusy(true);
+  push(el('user', '提问', d.user_input));
+});
+
+on('model_response', d => {
+  if (!d.tool_calls || !d.tool_calls.length) return;
+  push(el('think', '判断', `决定调用 ${d.tool_calls.length} 个工具（第 ${d.step + 1} 轮）`));
+});
+
+on('tool_start', d => {
+  push(el('tool', '调用', `${d.name}(${JSON.stringify(d.arguments)})`));
+});
+
+on('tool_end', d => {
+  const s = String(d.result);
+  push(el('tool', '返回', s.length > 300 ? s.slice(0, 300) + '…' : s));
+});
+
+on('turn_end', d => {
+  const a = document.createElement('div');
+  a.className = 'answer';
+  a.textContent = d.content;
+  push(a);
+  push(el('think', '完成', `共 ${d.steps} 轮`));
+  setBusy(false);
+});
+
+on('error', d => {
+  push(el('err', '错误', d.message));
+  setBusy(false);
+});
+
+// ---------- 发送 ----------
+function setBusy(b) {
+  sendBtn.disabled = b;
+  sendBtn.textContent = b ? '运行中' : '发送';
+}
+
+async function send() {
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  try {
+    const r = await fetch('/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    if (!r.ok) throw new Error(await r.text());
+  } catch (e) {
+    push(el('err', '错误', '请求失败：' + e.message));
+    setBusy(false);
+  }
+}
+
+sendBtn.addEventListener('click', send);
+input.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+</script>
+</body>
+</html>

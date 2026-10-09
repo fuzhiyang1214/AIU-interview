@@ -1,7 +1,7 @@
 # AIU创智部二面实战部分 说明文件
 
-> 进度：任务1-1（本地大模型）✅ ｜ 任务1-2（智能体搭建）✅ ｜ 任务二（YOLO）✅ 两轮训练 + 摄像头实时推理均已实机跑通\
-> 后续任务：进阶...(To be continued)
+> 进度：任务1-1（本地大模型）✅ ｜ 任务1-2（智能体搭建）✅ ｜ 任务二（YOLO）✅ 两轮训练 + 摄像头实时推理均已实机跑通 ｜ 任务四（Harness）✅ 分层骨架 + 双前端，并已把任务二的 YOLO 封装成工具接入\
+> 后续任务：任务三（软硬结合，手上暂无单片机）｜ 任务五（创意作品）...(To be continued)
 
 ## 目录结构
 
@@ -29,6 +29,15 @@ ai-interview/
 │  └─ infer/               摄像头实时推理（后端 app.py ｜ 前端 index.html）
 │     ├─ infer_README.md   本目录说明
 │     └─ images/           实时推理验证截图
+├─ harness/                LLM Agent 运行时（任务四：Harness 搭建）
+│  ├─ harness_README.md    本目录说明（原理 / 分层 / 启动 / 事件流）
+│  ├─ main.py              组装入口（只接线，无业务逻辑）
+│  ├─ cli.py               终端前端（只订阅事件）
+│  ├─ mini.py              单文件最小历史版（保留作对照）
+│  ├─ core/                ≈ pi-agent-core：loop ｜ registry ｜ executor ｜ events ｜ context
+│  ├─ backend/             ≈ pi-ai：网关抽象 + Ollama 适配器
+│  ├─ tools/               可插拔工具：get_time ｜ http_get ｜ yolo_detect
+│  └─ web/                 HTTP + SSE 前端（server.py ｜ static/index.html）
 ├─ log.md                  工程日志（按天记录进展与卡点）
 └─ README.md               说明文件
 ```
@@ -112,6 +121,49 @@ D:\envs\yolo\Scripts\python.exe app.py     # 浏览器打开 http://localhost:80
 
 详细步骤与卡点见 [`yolo/yolo_README.md`](yolo/yolo_README.md)。
 
+## 任务四 · Harness 搭建 ✅
+
+**是什么**：Harness 是套在 LLM 外面的运行时外壳（词源本意即"挽具"）。模型只会"说"，Harness 让它能"做"。
+模型有三条天生限制，Harness 就是三副对策：
+
+| 模型限制 | 后果 | Harness 的对策 |
+|---|---|---|
+| 只能生成 token | 不会读文件、不会开灯 | 把动作编码成 `tool_calls`，交给 executor 代跑 |
+| 无状态 | 不记得上一轮 | 消息列表外存，每轮全量重发 |
+| 一次前向 = 一步 | 想一步，看不到结果 | 用循环把它包起来 |
+
+**架构对齐 `piagent`**（题目提示的分层，对应 `earendil-works/pi`）：
+
+| 本项目 | piagent 对应层 | 职责 |
+|---|---|---|
+| `harness/core/` | `pi-agent-core` | agent loop ｜ 工具注册表 ｜ 执行器 ｜ 事件总线 ｜ 上下文 |
+| `harness/backend/` | `pi-ai` | LLM 网关：抽象接口 + Ollama 适配器 |
+| `harness/cli.py` ｜ `harness/web/` | `pi-coding-agent` | 应用层：终端前端 / 浏览器前端 |
+
+**三条铁律守住 `core/` 不变**（换模型、换工具、换前端都不动它）：
+
+1. `core/` 里不出现 `if model == "ollama"` —— 不认模型
+2. `core/` 里不出现任何具体工具名 —— 不认工具
+3. `core/` 里不出现 `print` —— 输出是 UI 的事，core 只 `emit` 事件
+
+**前后端解耦的实证**：`cli.py` 与 `web/server.py` 是**同一套事件的两个订阅者**，core 不知道谁在监听。
+加一个工具只需在 `tools/` 下按契约新建一个文件、在 `main.py` 加两行注册 —— `core/` 一字不改，两条路径均已实测。
+
+**与任务二打通**：把训练好的 YOLO 封装为 `yolo_detect` 工具，Agent 由此获得"看"的能力。
+难点是**跨解释器** —— harness 只用 Python 标准库（跑在系统 Python），而 torch / ultralytics 装在 `D:\envs\yolo`，于是用子进程桥接：
+
+```
+harness ──subprocess──► D:\envs\yolo\Scripts\python.exe ──► yolo\detect_cli.py
+                                                              └─ stdout: JSON
+```
+
+代价是每次调用都要冷启动并重新加载模型（首次约 13 s，热缓存后约 2.5 s）。这是**刻意的取舍**：
+做成常驻服务会更快，但两边就耦合了；现在 `core` 对 YOLO 的存在完全无感。
+
+**规模**：18 个 Python 文件 / 约 800 行（不含历史版 `mini.py`），**零第三方依赖**。
+
+完整原理、分层与事件流见 [`harness/harness_README.md`](harness/harness_README.md)。
+
 ## 怎么跑起来
 
 需要 Windows + 一张 ≥ 8 GB 显存的 N 卡；智能体链另外需要 Docker Desktop。
@@ -145,6 +197,12 @@ D:\envs\yolo\Scripts\python.exe main.py                 # 训练，产出 runs/.
 # ⑥ 摄像头实时推理
 cd yolo\infer
 D:\envs\yolo\Scripts\python.exe app.py                  # 浏览器打开 http://localhost:8000
+
+# ⑦ 任务四 · Harness（只用标准库，无需安装依赖，也无需激活 venv）
+cd harness
+python main.py --ask "北京现在几点？"                     # 单次提问，跑完即退出
+python main.py                                          # 终端交互模式
+python main.py --web --port 8080                        # Web 界面（避开 ⑥ 占用的 8000）
 ```
 
 各子链路的完整步骤见对应目录：
@@ -152,6 +210,7 @@ D:\envs\yolo\Scripts\python.exe app.py                  # 浏览器打开 http:/
 - **大模型链** → [`llm/llm_README.md`](llm/llm_README.md)（安装 → 迁模型目录 → 拉模型 → 服务化 → 测试）
 - **智能体链** → [`llm/agent/agent_README.md`](llm/agent/agent_README.md)（Ollama 作 provider → Dify 应用 → API → CLI / Web）
 - **视觉链** → [`yolo/yolo_README.md`](yolo/yolo_README.md)（venv 环境 → 标注 → 训练 → 实时推理）
+- **Harness** → [`harness/harness_README.md`](harness/harness_README.md)（原理 → 分层 → 启动 → 加工具 → 事件流）
 
 ## 进度
 
@@ -163,6 +222,7 @@ D:\envs\yolo\Scripts\python.exe app.py                  # 浏览器打开 http:/
 | 10-05 | **任务二启动**：确定 YOLO 路线；建独立 venv（`D:\envs\yolo`），装好 torch 2.11.0+cu128 与 ultralytics；标注 10 张图并完成划分（train 6 / val 3 / test 1） |
 | 10-06 | **任务二训练跑通**：定位并修复 Windows 多进程入口保护问题（`main.py` 加 `if __name__ == '__main__':`）；完成 100 epochs 训练（mAP50 0.866），产物归档至 `yolo/first_train/` |
 | 10-07 | **任务二收尾**：新增 `yolo/infer/` 摄像头实时推理（Flask + HTML，前后端解耦）与 `script/resize.py`；自采 60 张鞋子图完成标注与第二轮训练（mAP50 0.882）；**实时推理实机验证通过**（30 FPS），并定位「检不出」的域差异问题 |
+| 10-09 | **任务四**：搭建 LLM Agent Harness —— 按 `piagent` 分层落地 `core` / `backend` / `tools` / 双前端（终端 + Web SSE）；把任务二的 YOLO 封装为 `yolo_detect` 工具跨解释器接入，Agent 获得视觉能力 |
 
 逐日过程与卡点见 [`log.md`](log.md)。
 
@@ -178,14 +238,14 @@ D:\envs\yolo\Scripts\python.exe app.py                  # 浏览器打开 http:/
 
 ### 分工
 
-| 环节 | 主导方 | 说明 |
+| 环节 | 主导方 | 说明（举例） |
 |---|---|---|
 | 环境事实（版本 / 端口 / 进程 / 显存） | **我** | 以本机实测为准 |
 | 技术选型 | AI 给候选，**我拍板** | 智能体框架在 Dify / n8n / 纯自研中选定 Dify |
 | 系统级操作（安装、代理、Docker 配置） | **我亲手执行** | AI 只提供命令，避免其代为操作 |
-| 代码实现 | AI 出初稿，**我根据指示进行跑通测试** | `dify_client.py` / `cli.py` / `server.py` / `index.html` |
-| 测试与数据 | **我** | 测试用例AI由提供，自己输入Powershell，自己截图|
-| REAMDE文档 | 大部分由AI完成，我进行部分删繁就简| `README` / 测试报告 |
+| 代码/脚本编写与实现 | AI 出初稿，**我根据指示进行跑通测试** | `dify_client.py` / `cli.py` / `server.py` / `index.html` |
+| 测试与数据 | **我** | 测试用例由 AI 提供，自己输入 PowerShell 执行，自己截图 |
+| README 文档 | 大部分由 AI 完成，我进行部分删繁就简 | `README` / 测试报告 |
 | log.md日志| 基本全部由我完成，仅复制一些AI对话|`log.md`|
 
 
@@ -199,4 +259,8 @@ D:\envs\yolo\Scripts\python.exe app.py                  # 浏览器打开 http:/
 - [x] 训练产物与截图归档（`yolo/first_train/`）
 - [x] 调用摄像头做实时推理 demo（`yolo/infer/`）
 - [x] 采集自己的数据（60 张鞋子图）重新训练并用新模型实时推理
+- [x] 搭建 Harness 分层骨架（`core` / `backend` / `tools` / 前端），验证「加工具、换前端均不改 `core`」
+- [x] Web 前端（SSE 事件流）与终端前端订阅同一套事件
+- [x] 把任务二的 YOLO 封装为 `yolo_detect` 工具接入 Harness
+- [ ] 补 Harness 的对话测试截图与测试说明（`harness/test/`）
 - [ ] 补拍实际推理场景的数据混入重训，改善泛化能力（可选优化）

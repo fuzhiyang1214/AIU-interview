@@ -90,3 +90,20 @@ python app.py --camera 1 --port 8080 --conf 0.4    # 换摄像头 / 换端口 / 
 | **真鞋检不出，但手机屏幕里的鞋照片能检出** | 典型的**域差异**：训练图是手机俯拍特写（目标占画面 60~80%、光线充足、背景干净），而摄像头是平视、目标占比小、且台灯直射导致**过曝泛白**。**避免强光直射 / 降低环境光、让目标占画面 1/3 以上**后可正常检出；根治办法是用**同一个摄像头在实际推理位置**补拍数据重训 |
 | 检测时好时坏，要摆好角度和距离 | 同上。训练数据拍摄条件太单一（60 张、基本同一视角与光照），泛化不足；补拍多角度 / 多光照数据重训可改善 |
 | 帧率只有个位数 | 正常。RTX 5070 上 yolov8n @640 约 20~40 FPS，CPU 会明显更慢 |
+
+---
+
+## 补充（2026-10-09）：被 Harness 复用的入口
+
+任务四的 Harness 通过 `yolo/detect_cli.py` 调用本目录的 `model_loader.load_model()`，
+做「单次检测 → 输出 JSON」；再由 `harness/tools/yolo_detect.py` 起子进程调用它。
+
+```
+harness（系统 Python） ──subprocess──► D:/envs/yolo/Scripts/python.exe
+                                          └─ yolo/detect_cli.py
+                                               └─ from model_loader import load_model
+```
+
+本目录原有的 `app.py` / `camera.py`（Flask + MJPEG）保持不变，两者互不干扰：
+- `app.py` 服务浏览器看实时画面
+- `detect_cli.py` 供 agent 单次问"你看到了什么"
