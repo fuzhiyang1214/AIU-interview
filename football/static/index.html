@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<!--
+  football/static/index.html — 前端页面
+
+  职责：只负责 UI 组织与请求发送、结果渲染。不含任何检测/推理逻辑。
+  对应出题人规范第 4 条：前端只负责 UI 组织与订阅。
+  接口：POST /api/analyze ｜ POST /api/advise ｜ POST /api/ask
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI 战术分析师</title>
+<style>
+  :root {
+    --bg:#fff; --panel:#faf9f6; --line:#e5e3dd; --fg:#1f1e1c; --muted:#7a7873;
+    --purple:#534ab7; --purple-bg:#eeedfe; --teal:#0f6e56; --teal-bg:#e1f5ee;
+    --amber:#854f0b; --amber-bg:#faeeda; --red:#a32d2d; --red-bg:#fcebeb;
+    --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font:13px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;}
+  header{display:flex;align-items:center;gap:8px;padding:10px 14px;
+    border-bottom:1px solid var(--line);background:var(--panel);}
+  header h1{font-size:14px;font-weight:500;margin:0;}
+  header .sub{color:var(--muted);font-size:12px;}
+  header .spacer{flex:1;}
+  #status{font-size:12px;color:var(--muted);}
+  main{display:grid;grid-template-columns:1.1fr .9fr;gap:14px;padding:14px;align-items:start;}
+  .card{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:12px;}
+  .card h2{font-size:13px;font-weight:500;margin:0 0 8px;}
+  #stage{width:100%;border-radius:8px;border:1px dashed var(--line);
+    min-height:240px;display:flex;align-items:center;justify-content:center;
+    color:var(--muted);background:#fff;object-fit:contain;}
+  .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+  button{padding:7px 14px;border:none;border-radius:8px;cursor:pointer;
+    background:var(--purple);color:#fff;font:inherit;font-weight:500;}
+  button.ghost{background:#fff;color:var(--fg);border:1px solid var(--line);}
+  button:disabled{opacity:.45;cursor:default;}
+  .kv{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dotted var(--line);}
+  .kv b{font-weight:500;}
+  .tag{display:inline-block;font-size:11px;padding:1px 6px;border-radius:4px;font-family:var(--mono);}
+  .t0{background:var(--red-bg);color:var(--red);}
+  .t1{background:#e6f1fb;color:#185fa5;}
+  .out{background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px;
+    white-space:pre-wrap;margin-top:8px;min-height:40px;}
+  .advice{border-left:2px solid var(--teal);background:var(--teal-bg);
+    border-radius:0 8px 8px 0;}
+  #chatlog .msg{margin:6px 0;}
+  #chatlog .me{color:var(--purple);font-weight:500;}
+  #chatlog .ai{white-space:pre-wrap;}
+  .chat-in{display:flex;gap:8px;margin-top:8px;}
+  .chat-in input{flex:1;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff;color:var(--fg);}
+  .chat-in input:focus{outline:none;border-color:var(--purple);}
+  .hint{color:var(--muted);font-size:12px;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>AI 战术分析师</h1>
+  <span class="sub">截图 → 判断攻防态势 → 推演球可能的发展</span>
+  <span class="spacer"></span>
+  <span id="status">就绪</span>
+</header>
+
+<main>
+  <div class="card">
+    <h2>① 画面</h2>
+    <img id="stage" alt="等待上传截图">
+    <div class="row">
+      <input id="file" type="file" accept="image/*" hidden>
+      <button class="ghost" onclick="document.getElementById('file').click()">选择截图</button>
+      <button class="ghost" id="camBtn">抓摄像头一帧</button>
+      <button id="analyzeBtn" disabled>开始分析</button>
+    </div>
+    <div class="hint" style="margin-top:8px">支持 Ctrl+V 直接粘贴截图。</div>
+  </div>
+
+  <div class="card">
+    <h2>② 分析结果</h2>
+    <div id="summary"><span class="hint">尚未分析。</span></div>
+  </div>
+
+  <div class="card" style="grid-column:1 / -1">
+    <h2>③ 战术建议</h2>
+    <button id="adviseBtn" disabled>生成「当前态势 + 球可能的发展」</button>
+    <div id="advice" class="out advice" style="display:none"></div>
+  </div>
+
+  <div class="card" style="grid-column:1 / -1">
+    <h2>④ 战术问答</h2>
+    <div id="chatlog"><span class="hint">先分析一张截图，然后可以提问，例如「对方右路空了，我该怎么打？」</span></div>
+    <div class="chat-in">
+      <input id="question" placeholder="输入战术问题，回车发送" disabled>
+      <button id="askBtn" disabled>发送</button>
+    </div>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const stage = $('stage');
+let pendingDataURL = null;      // 待分析的图（本地）
+let hasAnalysis = false;
+
+function setStatus(t){ $('status').textContent = t; }
+
+function enableAfterImage(){
+  $('analyzeBtn').disabled = false;
+}
+
+// ---------- 输入：文件 / 粘贴 / 摄像头 ----------
+$('file').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (f) readFile(f);
+});
+
+document.addEventListener('paste', e => {
+  for (const it of (e.clipboardData?.items || [])) {
+    if (it.type.startsWith('image/')) { readFile(it.getAsFile()); break; }
+  }
+});
+
+function readFile(file){
+  const r = new FileReader();
+  r.onload = () => { pendingDataURL = r.result; stage.src = r.result; enableAfterImage(); setStatus('截图已就绪'); };
+  r.readAsDataURL(file);
+}
+
+$('camBtn').addEventListener('click', async () => {
+  setStatus('正在抓取摄像头…');
+  try {
+    const res = await post('/api/analyze', { source: 'camera' });
+    if (!res.ok) throw new Error(res.error || '抓取失败');
+    stage.src = res.annotated;
+    render(res);
+    setStatus('已分析（摄像头）');
+  } catch (e) { setStatus('失败：' + e.message); }
+});
+
+// ---------- 分析 ----------
+$('analyzeBtn').addEventListener('click', async () => {
+  if (!pendingDataURL) return;
+  $('analyzeBtn').disabled = true; setStatus('分析中…（首次会加载模型，略慢）');
+  try {
+    const res = await post('/api/analyze', { image: pendingDataURL });
+    if (!res.ok) throw new Error(res.error || '分析失败');
+    stage.src = res.annotated;
+    render(res);
+    setStatus('分析完成');
+  } catch (e) { setStatus('失败：' + e.message); }
+  finally { $('analyzeBtn').disabled = false; }
+});
+
+// ---------- 渲染 ----------
+const fmtZ = z => z ? `${z['上']} / ${z['中']} / ${z['下']}` : '—';
+
+function render(res){
+  const a = res.analysis;
+  const atk = a.attacking_team;
+  const dc = a.defender_channels;
+  const rows = [
+    ['球员总数', a.counts.players],
+    ['<span class="tag t0">T0</span> / <span class="tag t1">T1</span> 人数', `${a.counts.team0} / ${a.counts.team1}`],
+    ['T0 纵向分布（上/中/下）', fmtZ(a.dist?.['0'])],
+    ['T1 纵向分布（上/中/下）', fmtZ(a.dist?.['1'])],
+    ['球的位置', a.ball.present ? `${a.ball.zone}区 · ${a.ball.channel}通道` : '未检出'],
+    ['攻防判定', atk == null
+      ? '相持'
+      : `<span class="tag t${atk}">T${atk}</span> 进攻 · T${a.sides.defending} 防守（${a.direction}）`],
+    ['防守方通道人数', dc ? `左 ${dc['左']} / 中 ${dc['中']} / 右 ${dc['右']} → 空当「${a.gap_channel}」` : '—'],
+    ['判定依据', a.reason || '—'],
+  ];
+  $('summary').innerHTML = rows
+    .map(([k, v]) => `<div class="kv"><span>${k}</span><b>${v}</b></div>`).join('');
+
+  hasAnalysis = true;
+  $('adviseBtn').disabled = false;
+  $('question').disabled = false;
+  $('askBtn').disabled = false;
+  $('chatlog').innerHTML = '<span class="hint">可以开始提问了。</span>';
+}
+
+// ---------- 建议 ----------
+$('adviseBtn').addEventListener('click', async () => {
+  $('adviseBtn').disabled = true; setStatus('生成建议中…');
+  const box = $('advice'); box.style.display = 'block'; box.textContent = '思考中…';
+  try {
+    const res = await post('/api/advise', {});
+    box.textContent = res.ok ? res.advice : ('失败：' + res.error);
+    setStatus('就绪');
+  } catch (e) { box.textContent = '失败：' + e.message; }
+  finally { $('adviseBtn').disabled = false; }
+});
+
+// ---------- 问答 ----------
+$('askBtn').addEventListener('click', ask);
+$('question').addEventListener('keydown', e => { if (e.key === 'Enter') ask(); });
+
+async function ask(){
+  const q = $('question').value.trim();
+  if (!q || !hasAnalysis) return;
+  $('question').value = '';
+  const log = $('chatlog');
+  if (log.querySelector('.hint')) log.innerHTML = '';
+  log.insertAdjacentHTML('beforeend', `<div class="msg me">我：${escapeHtml(q)}</div>`);
+  const thinking = document.createElement('div');
+  thinking.className = 'msg ai'; thinking.textContent = '分析员：思考中…';
+  log.appendChild(thinking);
+  log.scrollTop = log.scrollHeight;
+  try {
+    const res = await post('/api/ask', { question: q });
+    thinking.textContent = '分析员：' + (res.ok ? res.answer : ('失败：' + res.error));
+  } catch (e) { thinking.textContent = '分析员：失败：' + e.message; }
+  log.scrollTop = log.scrollHeight;
+}
+
+// ---------- 工具 ----------
+async function post(url, body){
+  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  return r.json();
+}
+function escapeHtml(s){ const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+</script>
+</body>
+</html>

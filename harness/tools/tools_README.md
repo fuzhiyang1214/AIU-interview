@@ -29,16 +29,17 @@ def run(**kwargs) -> str:  # 实现，返回值必须是字符串
 | `get_time.py` | `get_time` | 查时间（玩具工具，用于验证链路） |
 | `http_get.py` | `http_get` | 抓网页并剥离 HTML 标签 |
 | `yolo_detect.py` | `yolo_detect` | **目标检测（复用任务二的 YOLO）** |
+| `football_tactics.py` | `football_tactics` | **足球攻防分析（复用任务五的创作作品）** |
 
-## ⚠️ 跨解释器工具：`yolo_detect.py`
+## ⚠️ 跨解释器工具：`yolo_detect.py` ｜ `football_tactics.py`
 
-这是唯一一个"特殊"的工具，因为它要调另一个 Python 环境。
+这两个工具要调**另一个 Python 环境**（任务二 / 任务五的 venv），是"特殊"工具。
 
 ```
 harness（系统 Python，无 torch）
    │  subprocess
    ▼
-D:\envs\yolo\Scripts\python.exe  yolo\detect_cli.py
+D:\envs\yolo\Scripts\python.exe  yolo\detect_cli.py   ｜   football\analyze_cli.py
    │  ultralytics + torch(cu128)
    ▼
 stdout 一行 JSON  →  harness 侧解析成自然语言
@@ -55,7 +56,9 @@ stdout 一行 JSON  →  harness 侧解析成自然语言
 | 文件 | 跑在哪 | 职责 |
 |---|---|---|
 | `yolo/detect_cli.py` | venv（`D:\envs\yolo`） | 读图/抓帧 → 推理 → 输出 JSON |
+| `football/analyze_cli.py` | venv（`D:\envs\yolo`） | 截图 → 检测/分队/判攻防 + 找空当 → 输出 JSON（可带战术解读） |
 | `harness/tools/yolo_detect.py` | 系统 Python | 起子进程、解析 JSON、转成自然语言 |
+| `harness/tools/football_tactics.py` | 系统 Python | 起子进程、解析 JSON、转成自然语言 |
 
 **依赖**：`D:\envs\yolo` 必须存在且装了 torch/ultralytics；权重由 `model_loader.latest_weight()`
 自动选最近一次训练的 `best.pt`。

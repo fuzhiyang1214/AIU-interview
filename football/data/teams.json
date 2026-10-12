@@ -1,0 +1,29 @@
+{
+  "_note": "球队资料库（离线数据源）。colors_hex 为球衣主/副色，用于按画面球衣颜色反查球队。",
+  "teams": [
+    { "name": "曼城", "en": "Manchester City", "league": "英超", "country": "英格兰", "colors_hex": ["#6CABDD", "#FFFFFF"], "formation": "4-3-3", "style": "传控渗透、边后卫内收" },
+    { "name": "阿森纳", "en": "Arsenal", "league": "英超", "country": "英格兰", "colors_hex": ["#EF0107", "#FFFFFF"], "formation": "4-3-3", "style": "高位压迫、边路叠加" },
+    { "name": "利物浦", "en": "Liverpool", "league": "英超", "country": "英格兰", "colors_hex": ["#C8102E", "#F6EB61"], "formation": "4-3-3", "style": "gegenpressing、快速转换" },
+    { "name": "曼联", "en": "Manchester United", "league": "英超", "country": "英格兰", "colors_hex": ["#DA291C", "#FFFFFF"], "formation": "4-2-3-1", "style": "中位防守、反击" },
+    { "name": "切尔西", "en": "Chelsea", "league": "英超", "country": "英格兰", "colors_hex": ["#034694", "#FFFFFF"], "formation": "4-2-3-1", "style": "控球推进" },
+    { "name": "热刺", "en": "Tottenham Hotspur", "league": "英超", "country": "英格兰", "colors_hex": ["#FFFFFF", "#132257"], "formation": "4-3-3", "style": "高线进攻、后场留空" },
+    { "name": "皇家马德里", "en": "Real Madrid", "league": "西甲", "country": "西班牙", "colors_hex": ["#FFFFFF", "#FEBE10"], "formation": "4-3-3", "style": "中场控制、边路爆点" },
+    { "name": "巴塞罗那", "en": "FC Barcelona", "league": "西甲", "country": "西班牙", "colors_hex": ["#A50044", "#004D98"], "formation": "4-3-3", "style": "tiki-taka、控球三角" },
+    { "name": "马德里竞技", "en": "Atletico Madrid", "league": "西甲", "country": "西班牙", "colors_hex": ["#CB3524", "#FFFFFF"], "formation": "4-4-2", "style": "低位密集、快速反击" },
+    { "name": "拜仁慕尼黑", "en": "Bayern Munich", "league": "德甲", "country": "德国", "colors_hex": ["#DC052D", "#FFFFFF"], "formation": "4-2-3-1", "style": "全场压迫、边中结合" },
+    { "name": "多特蒙德", "en": "Borussia Dortmund", "league": "德甲", "country": "德国", "colors_hex": ["#FDE100", "#000000"], "formation": "4-2-3-1", "style": "青年军快反" },
+    { "name": "勒沃库森", "en": "Bayer Leverkusen", "league": "德甲", "country": "德国", "colors_hex": ["#E32221", "#000000"], "formation": "3-4-3", "style": "三中卫、翼卫前插" },
+    { "name": "尤文图斯", "en": "Juventus", "league": "意甲", "country": "意大利", "colors_hex": ["#000000", "#FFFFFF"], "formation": "3-5-2", "style": "稳守反击" },
+    { "name": "国际米兰", "en": "Inter Milan", "league": "意甲", "country": "意大利", "colors_hex": ["#0068A8", "#000000"], "formation": "3-5-2", "style": "三中卫、边翼卫攻防一体" },
+    { "name": "AC米兰", "en": "AC Milan", "league": "意甲", "country": "意大利", "colors_hex": ["#FB090B", "#000000"], "formation": "4-2-3-1", "style": "由边路发起" },
+    { "name": "那不勒斯", "en": "Napoli", "league": "意甲", "country": "意大利", "colors_hex": ["#12A0D7", "#FFFFFF"], "formation": "4-3-3", "style": "快速纵向推进" },
+    { "name": "巴黎圣日耳曼", "en": "Paris Saint-Germain", "league": "法甲", "country": "法国", "colors_hex": ["#004170", "#DA291C"], "formation": "4-3-3", "style": "前场三叉戟" },
+    { "name": "巴西", "en": "Brazil", "league": "国家队", "country": "巴西", "colors_hex": ["#FFDF00", "#009C3B"], "formation": "4-2-3-1", "style": "技术型边路" },
+    { "name": "阿根廷", "en": "Argentina", "league": "国家队", "country": "阿根廷", "colors_hex": ["#75AADB", "#FFFFFF"], "formation": "4-3-3", "style": "中场组织核心" },
+    { "name": "法国", "en": "France", "league": "国家队", "country": "法国", "colors_hex": ["#003399", "#FFFFFF"], "formation": "4-2-3-1", "style": "稳守快反" },
+    { "name": "德国", "en": "Germany", "league": "国家队", "country": "德国", "colors_hex": ["#FFFFFF", "#000000"], "formation": "4-2-3-1", "style": "结构化传控" },
+    { "name": "西班牙", "en": "Spain", "league": "国家队", "country": "西班牙", "colors_hex": ["#C60B1E", "#FFC400"], "formation": "4-3-3", "style": "控球压制" },
+    { "name": "英格兰", "en": "England", "league": "国家队", "country": "英格兰", "colors_hex": ["#FFFFFF", "#CF081F"], "formation": "4-2-3-1", "style": "边路传中" },
+    { "name": "荷兰", "en": "Netherlands", "league": "国家队", "country": "荷兰", "colors_hex": ["#F36C21", "#FFFFFF"], "formation": "4-3-3", "style": "全攻全守" }
+  ]
+}

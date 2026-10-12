@@ -59,7 +59,8 @@ harness/
 └─ tools/             可插拔能力（"万物皆插件"）
    ├─ get_time.py     查时间（玩具工具）
    ├─ http_get.py     抓网页
-   └─ yolo_detect.py  目标检测（★ 复用任务二的 YOLO，跨解释器桥接）
+   ├─ yolo_detect.py  目标检测（★ 复用任务二的 YOLO，跨解释器桥接）
+   └─ football_tactics.py  足球攻防分析（★ 复用任务五的创作作品，跨解释器桥接）
 ```
 
 **cli.py 和 web/server.py 是同一套事件的两个订阅者** —— core 完全不知道谁在监听。
@@ -122,3 +123,8 @@ reg.register(xxx.NAME, xxx.SCHEMA, xxx.run)
 已实现的两个订阅者：`cli.py`（打成终端文字）和 `web/server.py`（打成 SSE 帧）。
 以后要接第三个前端（桌面通知 / 飞书机器人 / …），再写一个订阅同样事件的类即可，
 `core/` 依然一个字不改。
+
+## 跑通验证
+
+四张实机截图（CLI 调工具 / CLI 对照不调工具 / Web 调用过程 / Web 返回结果）与测试说明见
+[`test/test_README.md`](test/test_README.md)。

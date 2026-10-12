@@ -1,7 +1,7 @@
 # AIU创智部二面实战部分 说明文件
 
-> 进度：任务1-1（本地大模型）✅ ｜ 任务1-2（智能体搭建）✅ ｜ 任务二（YOLO）✅ 两轮训练 + 摄像头实时推理均已实机跑通 ｜ 任务四（Harness）✅ 分层骨架 + 双前端，并已把任务二的 YOLO 封装成工具接入\
-> 后续任务：任务三（软硬结合，手上暂无单片机）｜ 任务五（创意作品）...(To be continued)
+> 进度：任务1-1（本地大模型）✅ ｜ 任务1-2（智能体搭建）✅ ｜ 任务二（YOLO）✅ 两轮训练 + 摄像头实时推理均已实机跑通 ｜ 任务四（Harness）✅ **已实机跑通**（CLI 调工具 / Web SSE 实时推送 / YOLO 跨解释器接入）｜ 任务五（创意作品）✅ **AI 战术分析师**（截图 → 判攻防态势 → 推演球的发展）\
+> 后续任务：任务三（软硬结合，手上暂无单片机）...(To be continued)
 
 ## 目录结构
 
@@ -36,8 +36,17 @@ ai-interview/
 │  ├─ mini.py              单文件最小历史版（保留作对照）
 │  ├─ core/                ≈ pi-agent-core：loop ｜ registry ｜ executor ｜ events ｜ context
 │  ├─ backend/             ≈ pi-ai：网关抽象 + Ollama 适配器
-│  ├─ tools/               可插拔工具：get_time ｜ http_get ｜ yolo_detect
-│  └─ web/                 HTTP + SSE 前端（server.py ｜ static/index.html）
+│  ├─ tools/               可插拔工具：get_time ｜ http_get ｜ yolo_detect ｜ football_tactics
+│  ├─ web/                 HTTP + SSE 前端（server.py ｜ static/index.html）
+│  └─ test/                跑通验证：实机截图 + test_README.md
+├─ football/               创意作品（任务五：AI 战术分析师）
+│  ├─ football_README.md   本目录说明（定位 / 三功能 / 架构 / 已知局限）
+│  ├─ app.py               Flask 全栈后端（只组装 vision + data + brain）
+│  ├─ analyze_cli.py       命令行入口（同时供 Harness 子进程调用）
+│  ├─ static/index.html    前端（上传截图 / 显示结果 / 战术问答）
+│  ├─ vision/              视觉分析：检测球员 ｜ 球衣分两队 ｜ 攻防与空当
+│  ├─ data/                数据源：球队库 ｜ 颜色匹配（备用，未接入主流程）
+│  └─ brain/               战术推理：本地大模型生成建议与问答
 ├─ log.md                  工程日志（按天记录进展与卡点）
 └─ README.md               说明文件
 ```
@@ -160,9 +169,74 @@ harness ──subprocess──► D:\envs\yolo\Scripts\python.exe ──► yolo
 代价是每次调用都要冷启动并重新加载模型（首次约 13 s，热缓存后约 2.5 s）。这是**刻意的取舍**：
 做成常驻服务会更快，但两边就耦合了；现在 `core` 对 YOLO 的存在完全无感。
 
+**实机跑通验证**（2026-10-11，截图与说明见 [`harness/test/`](harness/test/test_README.md)）
+
+| # | 验证点 | 结果 |
+|---|---|---|
+| 1 | 主链路：模型自主调用 `get_time` | ✅ 2 轮完成 |
+| 2 | 对照：问「你好」直接回答、**不调**工具 | ✅ 1 轮完成 |
+| 3 | 前后端解耦：工具执行中事件已实时推送到前端 | ✅ 见「调用」块先于「返回」块 |
+| 4 | 跨解释器桥接：Agent 借 YOLO 看见画面 | ✅ 冷启动 15.9 s |
+
+第 1、2 条是**同一份代码、同一份工具表**：问时间会去调工具，问好则直接回答 —— 没有任何一处写死的分支，这就是控制反转。
+
+![CLI 调用工具](harness/test/01_cli_tool.png)
+
+第 3、4 条合起来说明前后端解耦：工具还在跑时「调用」块就已经渲染出来了，说明事件是**实时推送**而非等结果再渲染。
+
+![Web 调用过程](harness/test/03_web_toolcall.png)
+![Web 返回结果](harness/test/04_web_result.png)
+
+> 诚实记录：第 4 张中模型报「检测到一双鞋」属**误检**（画面里没有人穿鞋，置信度 0.321）。
+> 根因是数据集**没有负样本**（54 张图张张有鞋，模型未建立"背景"概念），与 Harness 架构无关，
+> 详见 [`harness/test/test_README.md`](harness/test/test_README.md)。本次目标是**跑通**，此点已达成。
+
 **规模**：18 个 Python 文件 / 约 800 行（不含历史版 `mini.py`），**零第三方依赖**。
 
 完整原理、分层与事件流见 [`harness/harness_README.md`](harness/harness_README.md)。
+
+## 任务五 · 创意作品：AI 战术分析师 ✅
+
+> 拍一张球场画面，它分出两队、判出谁在进攻谁在防守、指出哪条通道有空当，
+> 再用本地大模型推演**球接下来可能怎么走**。
+
+**为什么是这个题材**：题目任务四明确写着「尽情结合你的**专业方向和兴趣方向**」—— 兴趣 = 足球。
+它把前四个任务的积木全部串了起来：
+
+| 功能 | 复用到的已有能力 |
+|---|---|
+| ① 判断**谁在进攻、谁在防守** | 任务二 YOLO：COCO 权重里本就有的 `person`（**零训练**） |
+| ② 指出**空当通道** | 球员站位 → 左/中/右三通道人数（纯几何） |
+| ③ 推演**球可能的发展** | 任务一本地大模型 qwen2.5:7b |
+| ④ **战术问答** | 任务四 Harness 的上下文机制 + 前端 |
+
+> **刻意的「减法」**（呼应题目第 2 页）：**不做球队识别，也不硬套 4-3-3 这类阵型名。**
+> 静态单帧支撑不起精确阵型，与其编得人模人样，不如只给两件真能用的结论 —— 谁压上、球往哪走。
+
+**分层**（沿用题目规范，前后端解耦）：
+
+```
+截图 ──► vision/（检测·分队·判攻防·找空当）──► brain/（LLM 态势/发展/问答）
+             └─ app.py（Flask 只组装）──HTTP──► static/index.html（只显示）
+```
+
+**关键的「减法」**：视觉层直接用 COCO 权重里已有的 `person`(id 0)，
+**零标注、零训练、零新增依赖**；视觉是纯计算，想换后端只改 `brain/`，`vision/` 一字不动。
+
+**已实测跑通**（合成阵型图 14 人 → 分两队 → 判攻防/空当 → 本地大模型出「态势 + 球的发展」两段；
+Flask 四个接口端到端通过）：
+
+```bash
+cd football
+D:\envs\yolo\Scripts\python.exe app.py --port 8100        # 浏览器打开 http://127.0.0.1:8100
+D:\envs\yolo\Scripts\python.exe analyze_cli.py --source shot.jpg --advise   # 或命令行
+```
+
+**已接入 Harness**：新增 `football_tactics` 工具，Agent 可直接对截图做攻防分析（同款子进程桥接）。
+
+> 诚实标注局限：只吃高位/侧高位视角（纯俯视下 COCO 认不出人）；两队球衣颜色接近会分不开；
+> **`sports ball` 检测不可靠，故攻防判定优先走「越线人数」这条不依赖球的路径**。
+> 均为**已知取舍**，详见 [`football/football_README.md`](football/football_README.md)。
 
 ## 怎么跑起来
 
@@ -203,6 +277,11 @@ cd harness
 python main.py --ask "北京现在几点？"                     # 单次提问，跑完即退出
 python main.py                                          # 终端交互模式
 python main.py --web --port 8080                        # Web 界面（避开 ⑥ 占用的 8000）
+
+# ⑧ 任务五 · AI 战术分析师（视觉用 yolo 的 venv；建议 Ollama 在跑）
+cd football
+D:\envs\yolo\Scripts\python.exe app.py --port 8100      # 浏览器打开 http://127.0.0.1:8100
+D:\envs\yolo\Scripts\python.exe analyze_cli.py --source shot.jpg --advise   # 或命令行
 ```
 
 各子链路的完整步骤见对应目录：
@@ -211,6 +290,7 @@ python main.py --web --port 8080                        # Web 界面（避开 �
 - **智能体链** → [`llm/agent/agent_README.md`](llm/agent/agent_README.md)（Ollama 作 provider → Dify 应用 → API → CLI / Web）
 - **视觉链** → [`yolo/yolo_README.md`](yolo/yolo_README.md)（venv 环境 → 标注 → 训练 → 实时推理）
 - **Harness** → [`harness/harness_README.md`](harness/harness_README.md)（原理 → 分层 → 启动 → 加工具 → 事件流）
+- **创意作品** → [`football/football_README.md`](football/football_README.md)（定位 → 三功能 → 分层 → 启动 → 已知局限）
 
 ## 进度
 
@@ -223,6 +303,9 @@ python main.py --web --port 8080                        # Web 界面（避开 �
 | 10-06 | **任务二训练跑通**：定位并修复 Windows 多进程入口保护问题（`main.py` 加 `if __name__ == '__main__':`）；完成 100 epochs 训练（mAP50 0.866），产物归档至 `yolo/first_train/` |
 | 10-07 | **任务二收尾**：新增 `yolo/infer/` 摄像头实时推理（Flask + HTML，前后端解耦）与 `script/resize.py`；自采 60 张鞋子图完成标注与第二轮训练（mAP50 0.882）；**实时推理实机验证通过**（30 FPS），并定位「检不出」的域差异问题 |
 | 10-09 | **任务四**：搭建 LLM Agent Harness —— 按 `piagent` 分层落地 `core` / `backend` / `tools` / 双前端（终端 + Web SSE）；把任务二的 YOLO 封装为 `yolo_detect` 工具跨解释器接入，Agent 获得视觉能力 |
+| 10-11 | **任务四验证**：Harness 实机跑通 —— 自主调工具 / 对照不调工具 / Web 端 SSE 实时推送 / YOLO 跨解释器接入，截图归档 `harness/test/`；同时定位 YOLO 误检的数据集根因 |
+| 10-11 | **任务五**：完成创意作品《AI 战术分析师》—— 截图 → 检测球员/分队/判攻防（复用 COCO 权重，零训练）→ 本地大模型推演球的发展与战术问答；Flask 全栈 + 接入 Harness（`football_tactics` 工具） |
+| 10-12 | **任务五收敛**：按反馈**做减法** —— 砍掉球队识别与阵型命名，聚焦「判断攻防态势 + 推演球的发展」；并完成端到端实测（CLI + Flask 四接口），把两处判定缺陷修掉（越线基准改画面中线、提示词锁定攻防判定权） |
 
 逐日过程与卡点见 [`log.md`](log.md)。
 
@@ -234,7 +317,7 @@ python main.py --web --port 8080                        # Web 界面（避开 �
 
 | 工具 | 版本 / 模型 | 主要用途 |
 |---|---|---|
-| WorkBuddy | 5.6.2（内置 DeepSeek V4.1-flash） | 环境排障、技术选型、代码初稿、文档起草与评审 |
+| WorkBuddy | 5.6.2 → 5.7.7（内置 DeepSeek V4.1-flash） | 环境排障、技术选型、代码初稿、文档起草与评审 |
 
 ### 分工
 
@@ -243,8 +326,8 @@ python main.py --web --port 8080                        # Web 界面（避开 �
 | 环境事实（版本 / 端口 / 进程 / 显存） | **我** | 以本机实测为准 |
 | 技术选型 | AI 给候选，**我拍板** | 智能体框架在 Dify / n8n / 纯自研中选定 Dify |
 | 系统级操作（安装、代理、Docker 配置） | **我亲手执行** | AI 只提供命令，避免其代为操作 |
-| 代码/脚本编写与实现 | AI 出初稿，**我根据指示进行跑通测试** | `dify_client.py` / `cli.py` / `server.py` / `index.html` |
-| 测试与数据 | **我** | 测试用例由 AI 提供，自己输入 PowerShell 执行，自己截图 |
+| 代码/脚本编写与实现 | AI 出初稿，**我根据指示进行跑通测试** | `dify_client.py` / `cli.py` / `server.py` / `index.html` / `harness/` / `football/` |
+| 测试与数据 | **我** | 测试用例由 AI 提供，自己输入 PowerShell 执行，自己截图（`harness/test/`） |
 | README 文档 | 大部分由 AI 完成，我进行部分删繁就简 | `README` / 测试报告 |
 | log.md日志| 基本全部由我完成，仅复制一些AI对话|`log.md`|
 
@@ -262,5 +345,8 @@ python main.py --web --port 8080                        # Web 界面（避开 �
 - [x] 搭建 Harness 分层骨架（`core` / `backend` / `tools` / 前端），验证「加工具、换前端均不改 `core`」
 - [x] Web 前端（SSE 事件流）与终端前端订阅同一套事件
 - [x] 把任务二的 YOLO 封装为 `yolo_detect` 工具接入 Harness
-- [ ] 补 Harness 的对话测试截图与测试说明（`harness/test/`）
+- [x] 补 Harness 的对话测试截图与测试说明（`harness/test/`）
+- [x] 完成创意作品（任务五）：`football/` AI 战术分析师 —— 截图判攻防 / 找空当通道 / 推演球的发展 / 战术问答
+- [x] 把足球战术分析接入 Harness（`football_tactics` 工具）
+- [ ] 给数据集补无目标背景图（**空标签文件**）作负样本，改善 YOLO 工具的误检（可选优化）
 - [ ] 补拍实际推理场景的数据混入重训，改善泛化能力（可选优化）

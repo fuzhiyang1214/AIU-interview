@@ -18,7 +18,7 @@ from core.executor import Executor        # noqa: E402
 from core.loop import AgentLoop           # noqa: E402
 from core.context import Context          # noqa: E402
 from backend.ollama_provider import OllamaProvider   # noqa: E402
-from tools import get_time, http_get, yolo_detect     # noqa: E402
+from tools import get_time, http_get, yolo_detect, football_tactics     # noqa: E402
 
 
 def build():
@@ -28,6 +28,7 @@ def build():
     reg.register(get_time.NAME, get_time.SCHEMA, get_time.run)
     reg.register(http_get.NAME, http_get.SCHEMA, http_get.run)
     reg.register(yolo_detect.NAME, yolo_detect.SCHEMA, yolo_detect.run)   # ← 复用任务二
+    reg.register(football_tactics.NAME, football_tactics.SCHEMA, football_tactics.run)   # ← 复用任务五
 
     # ② 后端层：换模型只改这一行
     gateway = OllamaProvider(model="qwen2.5:7b")
