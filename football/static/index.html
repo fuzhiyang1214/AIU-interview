@@ -1,10 +1,20 @@
 <!DOCTYPE html>
 <!--
-  football/static/index.html — 前端页面
+  football/static/index.html — 前端页面（单文件 SPA）
 
-  职责：只负责 UI 组织与请求发送、结果渲染。不含任何检测/推理逻辑。
+  职责：只负责 UI 组织与请求发送、结果渲染。不含任何检测/推理/评分逻辑。
   对应出题人规范第 4 条：前端只负责 UI 组织与订阅。
-  接口：POST /api/analyze ｜ POST /api/advise ｜ POST /api/ask
+
+  六个视图（本文件按此顺序分区，CSS / HTML / JS 三段均同序）：
+    ① 战术分析  截图 → 判攻防 → 推演球的发展        POST /api/analyze + /advise + /ask
+    ② 战术板    手动排兵布阵（拖动摆位）             POST /api/tactics/analyze（复用同一判定内核）
+    ③ 我的球队  自建球员 + 六维能力（拖滑块即时向**后端**要总评）
+    ④ 比赛记录  录入赛况与出场明细
+    ⑤ 生涯      战绩 / 球员榜 / 成长曲线 / 时间线
+    ⑥ 球员库    18494 名真实球员的搜索与榜单
+
+  ★ 一个关键设计：分析结果只缓存一份在后端（STATE）。所以不论局面来自
+    「截图」还是「战术板」，建议与问答接口都用同一份 —— 前端不用传上下文。
 -->
 <html lang="zh-CN">
 <head>
@@ -16,7 +26,7 @@
     --bg:#fff; --panel:#faf9f6; --line:#e5e3dd; --fg:#1f1e1c; --muted:#7a7873;
     --purple:#534ab7; --purple-bg:#eeedfe; --teal:#0f6e56; --teal-bg:#e1f5ee;
     --amber:#854f0b; --amber-bg:#faeeda; --red:#a32d2d; --red-bg:#fcebeb;
-    --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
+    --grass:#e7f3ea; --grass-line:#8fbf9f; --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
   }
   *{box-sizing:border-box;}
   body{margin:0;background:var(--bg);color:var(--fg);
@@ -27,55 +37,151 @@
   header .sub{color:var(--muted);font-size:12px;}
   header .spacer{flex:1;}
   #status{font-size:12px;color:var(--muted);}
-  main{display:grid;grid-template-columns:1.1fr .9fr;gap:14px;padding:14px;align-items:start;}
-  .card{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:12px;}
+  main{display:none;grid-template-columns:1.1fr .9fr;gap:14px;padding:14px;align-items:start;}
+  main.on{display:grid;}
+  #view-board{grid-template-columns:1.5fr 1fr;}
+  #view-squad,#view-matches{grid-template-columns:1.05fr .95fr;}
+  #view-career{grid-template-columns:1fr 1fr;}
+  .card{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:12px;min-width:0;}
   .card h2{font-size:13px;font-weight:500;margin:0 0 8px;}
-  #stage{width:100%;border-radius:8px;border:1px dashed var(--line);
-    min-height:240px;display:flex;align-items:center;justify-content:center;
-    color:var(--muted);background:#fff;object-fit:contain;}
-  .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+  .card h2 .hint{font-weight:400;}
+  .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center;}
   button{padding:7px 14px;border:none;border-radius:8px;cursor:pointer;
     background:var(--purple);color:#fff;font:inherit;font-weight:500;}
   button.ghost{background:#fff;color:var(--fg);border:1px solid var(--line);}
+  button.danger{background:#fff;color:var(--red);border:1px solid var(--line);}
+  button.mini{padding:2px 8px;font-size:12px;border-radius:6px;}
   button:disabled{opacity:.45;cursor:default;}
-  .kv{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dotted var(--line);}
-  .kv b{font-weight:500;}
+  .kv{display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-bottom:1px dotted var(--line);}
+  .kv b{font-weight:500;text-align:right;}
   .tag{display:inline-block;font-size:11px;padding:1px 6px;border-radius:4px;font-family:var(--mono);}
   .t0{background:var(--red-bg);color:var(--red);}
   .t1{background:#e6f1fb;color:#185fa5;}
+  .pos{display:inline-block;font-size:10px;padding:0 4px;border-radius:3px;
+    background:#e6f1fb;color:#185fa5;margin-right:3px;font-family:var(--mono);}
+  .ovr{font-family:var(--mono);font-weight:600;font-size:12px;padding:1px 6px;
+    border-radius:4px;background:var(--teal-bg);color:var(--teal);}
   .out{background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px;
     white-space:pre-wrap;margin-top:8px;min-height:40px;}
-  .advice{border-left:2px solid var(--teal);background:var(--teal-bg);
-    border-radius:0 8px 8px 0;}
-  #chatlog .msg{margin:6px 0;}
-  #chatlog .me{color:var(--purple);font-weight:500;}
-  #chatlog .ai{white-space:pre-wrap;}
-  .chat-in{display:flex;gap:8px;margin-top:8px;}
-  .chat-in input{flex:1;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff;color:var(--fg);}
-  .chat-in input:focus{outline:none;border-color:var(--purple);}
+  .advice{border-left:2px solid var(--teal);background:var(--teal-bg);border-radius:0 8px 8px 0;}
   .hint{color:var(--muted);font-size:12px;}
+  .banner{border-left:2px solid var(--purple);background:var(--purple-bg);
+    border-radius:0 8px 8px 0;padding:8px 10px;font-weight:500;}
+  /* 页签 */
+  .tabs{display:flex;gap:2px;padding:0 10px;border-bottom:1px solid var(--line);
+    background:var(--panel);overflow-x:auto;}
+  .tabs button{background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);
+    padding:8px 11px;border-radius:0;font-weight:500;white-space:nowrap;}
+  .tabs button.on{color:var(--purple);border-bottom-color:var(--purple);}
+  /* 表单 */
+  input,select,textarea{padding:6px 9px;border:1px solid var(--line);border-radius:8px;
+    font:inherit;background:#fff;color:var(--fg);max-width:100%;}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--purple);}
+  input[type=range]{padding:0;border:none;background:none;accent-color:var(--purple);}
+  label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted);}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+  .chat-in{display:flex;gap:8px;margin-top:8px;}
+  .chat-in input{flex:1;}
+  #chatlog .msg,#bchatlog .msg{margin:6px 0;}
+  #chatlog .me,#bchatlog .me{color:var(--purple);font-weight:500;}
+  #chatlog .ai,#bchatlog .ai{white-space:pre-wrap;}
+  /* 列表 */
+  .plist{max-height:330px;overflow:auto;}
+  .prow{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;
+    cursor:pointer;border-bottom:1px dotted var(--line);}
+  .prow:hover{background:#fff;}
+  .prow.on{background:#fff;box-shadow:inset 0 0 0 1px var(--purple);}
+  .prow .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .prow .cl{color:var(--muted);font-size:12px;}
+  table.rank{width:100%;border-collapse:collapse;font-size:12px;}
+  table.rank th{text-align:left;color:var(--muted);font-weight:500;padding:4px 6px;
+    border-bottom:1px solid var(--line);white-space:nowrap;}
+  table.rank td{padding:4px 6px;border-bottom:1px dotted var(--line);}
+  table.rank tbody tr{cursor:pointer;}
+  table.rank tbody tr:hover td{background:#fff;}
+  table.rank input,table.rank select{padding:3px 6px;font-size:12px;}
+  .w{background:var(--teal-bg);color:var(--teal);} .d{background:var(--amber-bg);color:var(--amber);}
+  .l{background:var(--red-bg);color:var(--red);}
+  /* 战术板 */
+  .pitch-wrap{position:relative;width:100%;aspect-ratio:1050/680;background:var(--grass);
+    border-radius:10px;overflow:hidden;touch-action:none;border:1px solid var(--grass-line);}
+  .pitch-svg{position:absolute;inset:0;width:100%;height:100%;}
+  .tokens{position:absolute;inset:0;}
+  .zone-hl{position:absolute;top:0;bottom:0;background:rgba(240,173,78,.30);pointer-events:none;}
+  .tk{position:absolute;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;font:600 11px/1 var(--mono);
+    color:#fff;cursor:grab;user-select:none;border:2px solid rgba(255,255,255,.9);
+    box-shadow:0 1px 3px rgba(0,0,0,.28);}
+  .tk.t0{background:#d9534f;} .tk.t1{background:#3b7dd8;}
+  .tk.sel{outline:2px solid #f0ad4e;outline-offset:2px;}
+  .tk.dragging{cursor:grabbing;z-index:20;}
+  .tk .lb{position:absolute;top:32px;left:50%;transform:translateX(-50%);
+    font:500 10px/1 inherit;color:#2c3e33;white-space:nowrap;text-shadow:0 0 3px #e7f3ea,0 0 3px #e7f3ea;}
+  .balltk{position:absolute;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;
+    background:#fff;border:2px solid #333;cursor:grab;z-index:15;}
+  .balltk.dragging{cursor:grabbing;}
+  /* 滑块 */
+  .sl-row{display:grid;grid-template-columns:38px 1fr 30px;gap:8px;align-items:center;font-size:12px;}
+  .sl-row span{color:var(--muted);}
+  .sl-row b{font-family:var(--mono);font-weight:500;text-align:right;}
+  .bars{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 16px;margin-top:10px;}
+  .bar{display:flex;align-items:center;gap:6px;font-size:12px;}
+  .bar span{width:30px;color:var(--muted);}
+  .bar .track{flex:1;height:6px;background:#eceae4;border-radius:3px;overflow:hidden;}
+  .bar .fill{height:100%;background:var(--purple);}
+  .bar b{width:24px;text-align:right;font-family:var(--mono);font-weight:500;}
+  /* 球员卡 */
+  .pc-head{display:flex;gap:14px;align-items:center;}
+  .pc-head img{width:74px;height:74px;object-fit:contain;background:#fff;
+    border:1px solid var(--line);border-radius:10px;}
+  .pc-name{font-size:16px;font-weight:600;}
+  .pc-sub{color:var(--muted);font-size:12px;}
+  /* 生涯 */
+  .stat{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:10px;
+    background:#fff;border:1px solid var(--line);min-width:78px;}
+  .stat b{font-size:19px;font-weight:600;font-family:var(--mono);line-height:1.2;}
+  .stat span{font-size:11px;color:var(--muted);}
+  .tl{border-left:2px solid var(--line);padding-left:12px;margin-top:6px;}
+  .tl .it{position:relative;padding:5px 0;}
+  .tl .it:before{content:"";position:absolute;left:-17px;top:11px;width:7px;height:7px;
+    border-radius:50%;background:var(--line);}
+  .tl .it:first-child:before{background:var(--purple);}
 </style>
 </head>
 <body>
 
 <header>
   <h1>AI 战术分析师</h1>
-  <span class="sub">截图 → 判断攻防态势 → 推演球可能的发展</span>
+  <span class="sub">截图 / 排阵 → 判攻防态势 → 推演球的发展 ｜ 记录我的足球生涯</span>
   <span class="spacer"></span>
+  <span id="sourceHint" class="hint"></span>
   <span id="status">就绪</span>
 </header>
 
-<main>
+<nav class="tabs">
+  <button id="tabTactics" class="on" onclick="switchTab('tactics')">战术分析</button>
+  <button id="tabBoard" onclick="switchTab('board')">战术板</button>
+  <button id="tabSquad" onclick="switchTab('squad')">我的球队</button>
+  <button id="tabMatches" onclick="switchTab('matches')">比赛记录</button>
+  <button id="tabCareer" onclick="switchTab('career')">生涯</button>
+  <button id="tabPlayers" onclick="switchTab('players')">球员库</button>
+</nav>
+
+<!-- ============================ ① 战术分析 ============================ -->
+<main id="view-tactics" class="on">
   <div class="card">
     <h2>① 画面</h2>
-    <img id="stage" alt="等待上传截图">
+    <img id="stage" alt="等待上传截图"
+      style="width:100%;border-radius:8px;border:1px dashed var(--line);min-height:240px;
+             display:flex;align-items:center;justify-content:center;color:var(--muted);background:#fff;object-fit:contain;">
     <div class="row">
       <input id="file" type="file" accept="image/*" hidden>
       <button class="ghost" onclick="document.getElementById('file').click()">选择截图</button>
       <button class="ghost" id="camBtn">抓摄像头一帧</button>
       <button id="analyzeBtn" disabled>开始分析</button>
     </div>
-    <div class="hint" style="margin-top:8px">支持 Ctrl+V 直接粘贴截图。</div>
+    <div class="hint" style="margin-top:8px">支持 Ctrl+V 直接粘贴截图：整屏截图也行，会自动裁到球场区域再分析。攻守按「谁控球谁进攻」判 —— 球检不出来时只给站位事实，不硬判。若画面是高位/俯视图，AI 往往认不出球员，请改用「战术板」手动摆位。</div>
   </div>
 
   <div class="card">
@@ -99,130 +205,1133 @@
   </div>
 </main>
 
+<!-- ============================ ② 战术板 ============================ -->
+<main id="view-board">
+  <div class="card">
+    <h2>① 球场 <span class="hint">拖动圆点摆位；点一下选中后可改位置或删除</span></h2>
+    <div class="pitch-wrap" id="boardWrap">
+      <svg class="pitch-svg" viewBox="0 0 1050 680" preserveAspectRatio="none" aria-hidden="true">
+        <g fill="none" stroke="#ffffff" stroke-width="3" opacity="0.95">
+          <rect x="20" y="20" width="1010" height="640"/>
+          <line x1="20" y1="340" x2="1030" y2="340"/>
+          <circle cx="525" cy="340" r="91"/>
+          <circle cx="525" cy="340" r="6" fill="#fff"/>
+          <rect x="324" y="495" width="402" height="165"/>
+          <rect x="433" y="605" width="184" height="55"/>
+          <rect x="324" y="20" width="402" height="165"/>
+          <rect x="433" y="20" width="184" height="55"/>
+          <rect x="455" y="648" width="140" height="14"/>
+          <rect x="455" y="18" width="140" height="14"/>
+          <circle cx="525" cy="550" r="4" fill="#fff" stroke="none"/>
+          <circle cx="525" cy="130" r="4" fill="#fff" stroke="none"/>
+          <path d="M451.9 495 A91.5 91.5 0 0 1 598.1 495"/>
+          <path d="M451.9 185 A91.5 91.5 0 0 0 598.1 185"/>
+        </g>
+      </svg>
+      <div class="tokens" id="boardTokens"></div>
+    </div>
+
+    <div class="row" style="margin-top:12px">
+      <label class="f">我方队名<input id="boardMyLabel" value="我方" style="width:110px"></label>
+      <label class="f">对手队名<input id="boardOppLabel" value="对手" style="width:110px"></label>
+      <label class="f">一键铺开
+        <span style="display:flex;gap:6px">
+          <select id="boardPreset"></select>
+          <select id="boardPresetTeam">
+            <option value="0">我方</option><option value="1">对手</option>
+          </select>
+          <button class="ghost mini" id="boardPresetBtn">铺开</button>
+        </span>
+      </label>
+    </div>
+
+    <div class="row">
+      <button class="ghost mini" id="boardAddMy">+ 我方球员</button>
+      <button class="ghost mini" id="boardAddOpp">+ 对手球员</button>
+      <button class="ghost mini" id="boardAddBall">+ 放球</button>
+      <button class="ghost mini" id="boardClear">清空</button>
+      <span class="hint">我的球队：</span>
+      <select id="boardSquadPick"><option value="">（载入自建球员）</option></select>
+    </div>
+
+    <div id="boardEdit" class="row" style="display:none;border-top:1px dotted var(--line);padding-top:10px"></div>
+
+    <div class="row">
+      <button id="boardAnalyze">分析这个局面</button>
+      <button class="ghost" id="boardSave">存为阵容</button>
+      <label class="f" style="flex-direction:row;align-items:center;gap:6px">读取
+        <select id="boardLoad"><option value="">（已存阵容）</option></select>
+      </label>
+      <button class="ghost mini" id="boardDelForm" style="display:none">删除该阵容</button>
+    </div>
+    <div class="hint" id="boardHint" style="margin-top:8px"></div>
+  </div>
+
+  <div class="card">
+    <h2>② 局面判定</h2>
+    <div id="boardBanner" class="banner" style="display:none"></div>
+    <div id="boardResult" style="margin-top:8px"><span class="hint">摆好站位后点「分析这个局面」。判定逻辑与截图分析完全共用一套内核。</span></div>
+  </div>
+
+  <div class="card" style="grid-column:1 / -1">
+    <h2>③ 战术建议</h2>
+    <button id="boardAdviseBtn" disabled>生成「当前态势 + 球可能的发展」</button>
+    <div id="boardAdvice" class="out advice" style="display:none"></div>
+  </div>
+
+  <div class="card" style="grid-column:1 / -1">
+    <h2>④ 战术问答 <span class="hint">与截图分析共用当前局面</span></h2>
+    <div id="bchatlog"><span class="hint">先分析一个局面，然后可以提问。</span></div>
+    <div class="chat-in">
+      <input id="bquestion" placeholder="输入战术问题，回车发送" disabled>
+      <button id="baskBtn" disabled>发送</button>
+    </div>
+  </div>
+</main>
+
+<!-- ============================ ③ 我的球队 ============================ -->
+<main id="view-squad">
+  <div class="card">
+    <h2>① 我的球员</h2>
+    <div class="row" style="margin-top:0">
+      <button class="ghost mini" id="sqNew">+ 新建球员</button>
+      <span class="hint" id="sqCount"></span>
+    </div>
+    <div id="sqList" class="plist" style="margin-top:10px"><span class="hint">还没有自建球员。点「新建球员」开始。</span></div>
+  </div>
+
+  <div class="card">
+    <h2>② 球员档案 <span class="hint" id="sqHint"></span></h2>
+    <div id="sqForm">
+      <div class="grid2">
+        <label class="f">姓名<input id="sqName" placeholder="必填"></label>
+        <label class="f">位置<select id="sqPos"></select></label>
+        <label class="f">球衣号<input id="sqNo" type="number" min="1" max="99"></label>
+        <label class="f">年龄<input id="sqAge" type="number" min="5" max="60"></label>
+        <label class="f">惯用脚<select id="sqFoot">
+          <option>右脚</option><option>左脚</option><option>双脚</option></select></label>
+        <label class="f">潜力<input id="sqPotential" type="number" min="1" max="99"></label>
+      </div>
+
+      <div style="margin-top:12px">
+        <div class="hint" style="margin-bottom:6px">六维能力（拖动即时更新总评）</div>
+        <div id="sqAttrs" style="display:grid;gap:6px"></div>
+      </div>
+
+      <div class="row" style="border-top:1px dotted var(--line);padding-top:10px">
+        <span class="hint">实时总评</span>
+        <span class="ovr" id="sqOverall" style="font-size:15px">—</span>
+        <span class="hint" id="sqBest"></span>
+      </div>
+
+      <label class="f" style="margin-top:8px">备注<input id="sqNote" placeholder="可选"></label>
+
+      <div class="row">
+        <button id="sqSave">保存</button>
+        <button class="danger" id="sqDelete" style="display:none">删除</button>
+        <span class="hint">总评由「位置权重 × 六维能力」算出，换位置会实时变化。</span>
+      </div>
+      <div id="sqChartWrap" style="margin-top:12px"></div>
+    </div>
+  </div>
+</main>
+
+<!-- ============================ ④ 比赛记录 ============================ -->
+<main id="view-matches">
+  <div class="card">
+    <h2>① 比赛列表</h2>
+    <div class="row" style="margin-top:0">
+      <button class="ghost mini" id="mtNew">+ 新建比赛</button>
+      <span class="hint" id="mtCount"></span>
+    </div>
+    <div id="mtList" class="plist" style="margin-top:10px;max-height:460px">
+      <span class="hint">还没有比赛记录。</span></div>
+  </div>
+
+  <div class="card">
+    <h2>② 录入赛况 <span class="hint" id="mtHint"></span></h2>
+    <div class="grid2">
+      <label class="f">日期<input id="mtDate" type="date"></label>
+      <label class="f">赛事<input id="mtComp" placeholder="如 院系联赛"></label>
+      <label class="f">我方队名<input id="mtMy" placeholder="必填"></label>
+      <label class="f">对手<input id="mtOpp" placeholder="必填"></label>
+      <label class="f">我方进球<input id="mtGF" type="number" min="0" value="0"></label>
+      <label class="f">对方进球<input id="mtGA" type="number" min="0" value="0"></label>
+    </div>
+    <div class="grid2" style="margin-top:8px">
+      <label class="f">使用阵容<select id="mtFormation"><option value="">（不关联）</option></select></label>
+      <label class="f">备注<input id="mtNote" placeholder="可选"></label>
+    </div>
+
+    <div style="margin-top:12px">
+      <div class="row" style="margin-top:0">
+        <span class="hint">出场明细</span>
+        <button class="ghost mini" id="mtAddApp">+ 加一行</button>
+        <button class="ghost mini" id="mtAddSquad">+ 从我的球队全员</button>
+      </div>
+      <div id="mtApps" style="margin-top:8px"></div>
+    </div>
+
+    <div class="row" style="border-top:1px dotted var(--line);padding-top:10px">
+      <button id="mtSave">保存</button>
+      <button class="danger" id="mtDelete" style="display:none">删除</button>
+      <span class="hint">球员名可从下拉选（自动关联生涯统计），也可手打。</span>
+    </div>
+  </div>
+</main>
+
+<!-- ============================ ⑤ 生涯 ============================ -->
+<main id="view-career">
+  <div class="card" style="grid-column:1 / -1">
+    <h2>① 战绩总览</h2>
+    <div id="crStats" class="row" style="margin-top:0;gap:10px"></div>
+  </div>
+
+  <div class="card">
+    <h2>② 我的球员生涯</h2>
+    <div id="crRoster"><span class="hint">还没有数据。</span></div>
+  </div>
+
+  <div class="card">
+    <h2>③ 射手榜</h2>
+    <div id="crScorers"><span class="hint">还没有进球记录。</span></div>
+  </div>
+
+  <div class="card" style="grid-column:1 / -1">
+    <h2>④ 能力成长曲线
+      <select id="crChartSel" style="margin-left:6px"></select>
+    </h2>
+    <div id="crChart"><span class="hint">改动球员能力值后会留下快照，这里画成曲线。</span></div>
+  </div>
+
+  <div class="card" style="grid-column:1 / -1">
+    <h2>⑤ 最近比赛</h2>
+    <div id="crTimeline"><span class="hint">还没有比赛。</span></div>
+  </div>
+</main>
+
+<!-- ============================ ⑥ 球员库 ============================ -->
+<main id="view-players">
+  <div class="card">
+    <h2>① 球员搜索</h2>
+    <div class="chat-in">
+      <input id="pQuery" placeholder="英文名更容易命中，如 Messi / Haaland / Bellingham">
+      <button id="pSearchBtn">搜索</button>
+    </div>
+    <div class="hint" style="margin-top:8px">库内 <b>18494</b> 名球员（EA FC 数据集）。点结果查看能力卡。</div>
+    <div id="pResults" style="margin-top:10px"><span class="hint">输入球员名开始搜索。</span></div>
+  </div>
+
+  <div class="card">
+    <h2>② 能力榜</h2>
+    <div class="row" style="margin-top:0">
+      <select id="pRankBy">
+        <option value="overall">总评</option><option value="potential">潜力</option>
+        <option value="pace">速度</option><option value="shooting">射门</option>
+        <option value="passing">传球</option><option value="dribbling">盘带</option>
+        <option value="defending">防守</option><option value="physical">身体</option>
+        <option value="value_eur">身价</option><option value="wage_eur">周薪</option>
+        <option value="age">年龄</option>
+      </select>
+      <input id="pRankPos" placeholder="位置（可选，如 ST）" style="width:150px">
+      <button class="ghost" id="pRankBtn">刷新榜单</button>
+    </div>
+    <div id="pRankTable" style="margin-top:10px"><span class="hint">切到本页签时自动加载。</span></div>
+  </div>
+
+  <div class="card" id="pCard" style="grid-column:1 / -1; display:none">
+    <h2>③ 球员卡</h2>
+    <div id="pCardBody"></div>
+  </div>
+</main>
+
 <script>
 const $ = id => document.getElementById(id);
-const stage = $('stage');
-let pendingDataURL = null;      // 待分析的图（本地）
-let hasAnalysis = false;
+const VIEWS = ['tactics', 'board', 'squad', 'matches', 'career', 'players'];
+const cap = s => s[0].toUpperCase() + s.slice(1);
 
 function setStatus(t){ $('status').textContent = t; }
 
-function enableAfterImage(){
-  $('analyzeBtn').disabled = false;
+async function post(url, body){
+  const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body || {})});
+  return r.json();
+}
+async function req(url, method, body){
+  const opt = {method: method || 'GET'};
+  if (body !== undefined) { opt.headers = {'Content-Type':'application/json'}; opt.body = JSON.stringify(body); }
+  const r = await fetch(url, opt);
+  return r.json();
+}
+async function getJSON(url){ const r = await fetch(url); return r.json(); }
+function escapeHtml(s){ const d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
+function today(){ const d = new Date(); const p = n => String(n).padStart(2,'0');
+  return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate()); }
+
+/* ==================== 页签切换 ==================== */
+// 每个视图第一次被打开时做一次初始化（只跑一次，不重复请求）
+const FIRST_OPEN = {
+  players: () => { loadRank(); },
+  board:   async () => { await loadPickers(); await initBoard(); },
+  squad:   async () => { await loadSquadRules(); await loadPickers(); await loadSquad();
+                        if (!SQ.editing) fillForm(null); },   // 表单归零，避免残留上次的值
+  matches: async () => { await loadPickers(); await loadMatches(); },
+  career:  () => { loadCareer(); },
+};
+
+function switchTab(which){
+  VIEWS.forEach(v => {
+    $('view-' + v).classList.toggle('on', v === which);
+    $('tab' + cap(v)).classList.toggle('on', v === which);
+  });
+  const fn = FIRST_OPEN[which];
+  if (fn) { delete FIRST_OPEN[which]; fn(); }
 }
 
-// ---------- 输入：文件 / 粘贴 / 摄像头 ----------
-$('file').addEventListener('change', e => {
-  const f = e.target.files[0];
-  if (f) readFile(f);
-});
+/* ==================== 局面来源提示 ==================== */
+function setSourceHint(text){ $('sourceHint').textContent = text ? ('当前局面：' + text) : ''; }
 
+/* ==================== 分析结果渲染（两个视图共用） ==================== */
+const fmtZ = z => Array.isArray(z) ? z.join(' / ') : '—';
+
+function analysisRows(a, labels){
+  const nm = t => (labels && labels[t]) ? labels[t] : ('T' + t);
+  const atk = a.attacking_team;
+  const dc = a.defender_channels;
+  const L = (a.axis && a.axis.labels) || {};
+  const dep = (L.depth || ['上', '中', '下']).join(' / ');
+  const chan = L.channel || ['左', '中', '右'];
+  // 方向：图像路径单帧判不出「哪侧球门归谁」，所以不给绝对方向，只报判定依据
+  const how = a.direction || (a.basis === 'ball' ? '控球判定'
+                            : (a.basis === 'position' ? '站位粗判' : '—'));
+  const ballTxt = a.ball.present
+    ? (a.ball.depth_band + '纵深段 · ' + a.ball.channel_band + '通道'
+       + (a.ball.owner != null && a.basis === 'ball' ? '（' + nm(a.ball.owner) + ' 脚下）' : ''))
+    : '未摆放 / 未检出';
+  const rows = [
+    ['球员总数', a.counts.players],
+    [nm(0) + ' / ' + nm(1) + ' 人数', a.counts.team0 + ' / ' + a.counts.team1],
+    [nm(0) + ' 纵深分布（' + dep + '）', fmtZ(a.dist && a.dist['0'])],
+    [nm(1) + ' 纵深分布（' + dep + '）', fmtZ(a.dist && a.dist['1'])],
+    ['球的位置', ballTxt],
+    ['攻防判定', atk == null ? '相持'
+      : '<span class="tag t' + atk + '">' + escapeHtml(nm(atk)) + '</span> 进攻 · '
+        + escapeHtml(nm(a.sides.defending)) + ' 防守（' + escapeHtml(how) + '）'],
+    ['防守方通道人数', dc ? (dc.map((n, i) => chan[i] + ' ' + n).join(' / ')
+        + ' → 空当「' + (a.gap_channel || '—') + '」') : '—'],
+    ['判定依据', a.reason || '—'],
+  ];
+  if (a.crop && a.crop.cropped){
+    rows.splice(1, 0, ['分析区域', '自动裁到球场 ' + a.image_size[0] + '×' + a.image_size[1]
+      + '（原图 ' + a.crop.source_size[0] + '×' + a.crop.source_size[1]
+      + '，推理尺寸 ' + a.crop.imgsz + '）']);
+  }
+  if (a.unassigned && a.unassigned.count){
+    rows.splice(2, 0, ['未计入（门将 / 裁判）', a.unassigned.count + ' 人']);
+  }
+  return rows;
+}
+
+function renderRowsInto(el, a, labels){
+  el.innerHTML = analysisRows(a, labels)
+    .map(r => '<div class="kv"><span>' + r[0] + '</span><b>' + r[1] + '</b></div>').join('');
+}
+
+/* ================================================================
+   ① 战术分析
+   ================================================================ */
+const stage = $('stage');
+let pendingDataURL = null, hasAnalysis = false;
+
+$('file').addEventListener('change', e => { const f = e.target.files[0]; if (f) readFile(f); });
 document.addEventListener('paste', e => {
-  for (const it of (e.clipboardData?.items || [])) {
-    if (it.type.startsWith('image/')) { readFile(it.getAsFile()); break; }
+  for (const it of (e.clipboardData ? e.clipboardData.items : [])) {
+    if (it.type && it.type.startsWith('image/')) { readFile(it.getAsFile()); break; }
   }
 });
-
 function readFile(file){
   const r = new FileReader();
-  r.onload = () => { pendingDataURL = r.result; stage.src = r.result; enableAfterImage(); setStatus('截图已就绪'); };
+  r.onload = () => { pendingDataURL = r.result; stage.src = r.result; $('analyzeBtn').disabled = false; setStatus('截图已就绪'); };
   r.readAsDataURL(file);
 }
 
 $('camBtn').addEventListener('click', async () => {
   setStatus('正在抓取摄像头…');
   try {
-    const res = await post('/api/analyze', { source: 'camera' });
+    const res = await post('/api/analyze', {source: 'camera'});
     if (!res.ok) throw new Error(res.error || '抓取失败');
     stage.src = res.annotated;
-    render(res);
+    renderImageResult(res.analysis);
     setStatus('已分析（摄像头）');
   } catch (e) { setStatus('失败：' + e.message); }
 });
 
-// ---------- 分析 ----------
 $('analyzeBtn').addEventListener('click', async () => {
   if (!pendingDataURL) return;
   $('analyzeBtn').disabled = true; setStatus('分析中…（首次会加载模型，略慢）');
   try {
-    const res = await post('/api/analyze', { image: pendingDataURL });
+    const res = await post('/api/analyze', {image: pendingDataURL});
     if (!res.ok) throw new Error(res.error || '分析失败');
     stage.src = res.annotated;
-    render(res);
+    renderImageResult(res.analysis);
     setStatus('分析完成');
   } catch (e) { setStatus('失败：' + e.message); }
   finally { $('analyzeBtn').disabled = false; }
 });
 
-// ---------- 渲染 ----------
-const fmtZ = z => z ? `${z['上']} / ${z['中']} / ${z['下']}` : '—';
-
-function render(res){
-  const a = res.analysis;
-  const atk = a.attacking_team;
-  const dc = a.defender_channels;
-  const rows = [
-    ['球员总数', a.counts.players],
-    ['<span class="tag t0">T0</span> / <span class="tag t1">T1</span> 人数', `${a.counts.team0} / ${a.counts.team1}`],
-    ['T0 纵向分布（上/中/下）', fmtZ(a.dist?.['0'])],
-    ['T1 纵向分布（上/中/下）', fmtZ(a.dist?.['1'])],
-    ['球的位置', a.ball.present ? `${a.ball.zone}区 · ${a.ball.channel}通道` : '未检出'],
-    ['攻防判定', atk == null
-      ? '相持'
-      : `<span class="tag t${atk}">T${atk}</span> 进攻 · T${a.sides.defending} 防守（${a.direction}）`],
-    ['防守方通道人数', dc ? `左 ${dc['左']} / 中 ${dc['中']} / 右 ${dc['右']} → 空当「${a.gap_channel}」` : '—'],
-    ['判定依据', a.reason || '—'],
-  ];
-  $('summary').innerHTML = rows
-    .map(([k, v]) => `<div class="kv"><span>${k}</span><b>${v}</b></div>`).join('');
-
+function renderImageResult(a){
+  renderRowsInto($('summary'), a, null);
   hasAnalysis = true;
   $('adviseBtn').disabled = false;
-  $('question').disabled = false;
-  $('askBtn').disabled = false;
-  $('chatlog').innerHTML = '<span class="hint">可以开始提问了。</span>';
+  $('question').disabled = false; $('askBtn').disabled = false;
+  $('boardAdviseBtn').disabled = false;
+  $('bquestion').disabled = false; $('baskBtn').disabled = false;
+  setSourceHint('截图分析');
 }
 
-// ---------- 建议 ----------
-$('adviseBtn').addEventListener('click', async () => {
-  $('adviseBtn').disabled = true; setStatus('生成建议中…');
-  const box = $('advice'); box.style.display = 'block'; box.textContent = '思考中…';
+$('adviseBtn').addEventListener('click', () => runAdvise('advice', 'adviseBtn'));
+$('boardAdviseBtn').addEventListener('click', () => runAdvise('boardAdvice', 'boardAdviseBtn'));
+
+async function runAdvise(boxId, btnId){
+  const b = $(btnId); b.disabled = true; setStatus('生成建议中…');
+  const box = $(boxId); box.style.display = 'block'; box.textContent = '思考中…';
   try {
     const res = await post('/api/advise', {});
     box.textContent = res.ok ? res.advice : ('失败：' + res.error);
     setStatus('就绪');
   } catch (e) { box.textContent = '失败：' + e.message; }
-  finally { $('adviseBtn').disabled = false; }
+  finally { b.disabled = false; }
+}
+
+/* ---------- 问答（两个视图共用一套逻辑） ---------- */
+function bindAsk(inputId, btnId, logId){
+  const go = async () => {
+    const q = $(inputId).value.trim();
+    if (!q) return;
+    $(inputId).value = '';
+    const log = $(logId);
+    const hint = log.querySelector('.hint');
+    if (hint) log.innerHTML = '';
+    log.insertAdjacentHTML('beforeend', '<div class="msg me">我：' + escapeHtml(q) + '</div>');
+    const thinking = document.createElement('div');
+    thinking.className = 'msg ai'; thinking.textContent = '分析员：思考中…';
+    log.appendChild(thinking); log.scrollTop = log.scrollHeight;
+    try {
+      const res = await post('/api/ask', {question: q});
+      thinking.textContent = '分析员：' + (res.ok ? res.answer : ('失败：' + res.error));
+    } catch (e) { thinking.textContent = '分析员：失败：' + e.message; }
+    log.scrollTop = log.scrollHeight;
+  };
+  $(btnId).addEventListener('click', go);
+  $(inputId).addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+}
+bindAsk('question', 'askBtn', 'chatlog');
+bindAsk('bquestion', 'baskBtn', 'bchatlog');
+
+/* ================================================================
+   ② 战术板
+   ================================================================ */
+const BF = {slots: [], ball: null, sel: -1, meta: null, inited: false};
+
+async function initBoard(){
+  if (BF.inited) return;
+  BF.inited = true;
+  const meta = await getJSON('/api/tactics/meta');
+  BF.meta = meta;
+  $('boardPreset').innerHTML = (meta.presets || [])
+    .map(p => '<option>' + p + '</option>').join('');
+  boardPreset();          // 一进来先铺一套，空场地不好上手
+}
+
+function boardPreset(){
+  const name = $('boardPreset').value;
+  const t = parseInt($('boardPresetTeam').value, 10) || 0;
+  BF.slots = BF.slots.filter(s => s.team !== t)          // 只替换被选中那一队
+    .concat(presetSlots(name, t));
+  BF.sel = -1;
+  drawBoard(); renderBoardEdit(); updateBoardHint();
+}
+
+function presetSlots(name, team){
+  const P = BOARD_PRESETS[name] || BOARD_PRESETS['4-4-2'];
+  return P.map(([pos, x, y]) => team === 1
+    ? {team:1, pos:pos, x: +(1-x).toFixed(4), y: +(1-y).toFixed(4)}   // 镜像到对侧半场
+    : {team:0, pos:pos, x:x, y:y});
+}
+const BOARD_PRESETS = {
+  '4-4-2':  [['GK',.50,.94],['LB',.16,.78],['CB',.38,.82],['CB',.62,.82],['RB',.84,.78],
+             ['LM',.16,.55],['CM',.38,.58],['CM',.62,.58],['RM',.84,.55],['ST',.38,.34],['ST',.62,.34]],
+  '4-3-3':  [['GK',.50,.94],['LB',.16,.78],['CB',.38,.82],['CB',.62,.82],['RB',.84,.78],
+             ['CDM',.50,.63],['CM',.30,.55],['CM',.70,.55],['LW',.16,.34],['ST',.50,.30],['RW',.84,.34]],
+  '4-2-3-1':[['GK',.50,.94],['LB',.16,.78],['CB',.38,.82],['CB',.62,.82],['RB',.84,.78],
+             ['CDM',.36,.65],['CDM',.64,.65],['LM',.16,.42],['CAM',.50,.44],['RM',.84,.42],['ST',.50,.26]],
+  '3-5-2':  [['GK',.50,.94],['CB',.28,.82],['CB',.50,.84],['CB',.72,.82],
+             ['LWB',.10,.58],['CM',.32,.58],['CDM',.50,.64],['CM',.68,.58],['RWB',.90,.58],
+             ['ST',.38,.32],['ST',.62,.32]],
+  '5-3-2':  [['GK',.50,.94],['LWB',.10,.76],['CB',.30,.84],['CB',.50,.86],['CB',.70,.84],
+             ['RWB',.90,.76],['CM',.32,.56],['CDM',.50,.60],['CM',.68,.56],['ST',.38,.32],['ST',.62,.32]],
+};
+
+/** 一次性刷新所有「依赖我的球队 / 已存阵容」的下拉与候选（幂等，可反复调）。 */
+async function loadPickers(){
+  const sq = await getJSON('/api/career/squad');
+  const players = sq.players || [];
+  const op = (sel, empty) => empty + players.map(p =>
+    '<option value="' + p.id + '">' + escapeHtml(p.name) + ' ' + escapeHtml(p.position || '')
+    + '</option>').join('');
+
+  $('boardSquadPick').innerHTML = op(null, '<option value="">（载入自建球员）</option>');
+  rebuildDatalist(players);
+
+  const fm = await getJSON('/api/career/formations');
+  const forms = fm.formations || [];
+  const fo = (empty) => empty + forms.map(f =>
+    '<option value="' + f.id + '">' + escapeHtml(f.name) + '</option>').join('');
+  $('boardLoad').innerHTML = fo('<option value="">（已存阵容）</option>');
+  $('mtFormation').innerHTML = fo('<option value="">（不关联）</option>');
+}
+
+/* ---------- 绘制 ---------- */
+function drawBoard(){
+  const wrap = $('boardWrap');
+  const hl = wrap.querySelectorAll('.zone-hl');
+  hl.forEach(el => el.remove());
+
+  const box = $('boardTokens');
+  let html = BF.slots.map((s, i) => {
+    const lb = s.name ? escapeHtml(s.name) : (s.pos || '');
+    const face = s.no != null && s.no !== '' ? s.no : (s.pos ? s.pos.slice(0, 3) : '·');
+    return '<div class="tk t' + s.team + (i === BF.sel ? ' sel' : '') + '" data-tk="' + i + '"'
+      + ' style="left:' + (s.x * 100) + '%;top:' + (s.y * 100) + '%"'
+      + ' title="' + escapeHtml((s.name || '球员') + ' ' + (s.pos || '') + (s.no != null && s.no !== '' ? ' #' + s.no : '')) + '">'
+      + escapeHtml(face)
+      + (lb ? '<span class="lb">' + lb + '</span>' : '')
+      + '</div>';
+  }).join('');
+  if (BF.ball) {
+    html += '<div class="balltk" data-tk="ball" style="left:' + (BF.ball.x * 100) + '%;top:'
+      + (BF.ball.y * 100) + '%" title="球"></div>';
+  }
+  box.innerHTML = html;
+}
+
+function updateBoardHint(){
+  const my = BF.slots.filter(s => s.team === 0).length;
+  const op = BF.slots.filter(s => s.team === 1).length;
+  $('boardHint').textContent = '我方 ' + my + ' 人 ｜ 对手 ' + op + ' 人'
+    + (BF.ball ? ' ｜ 已放球' : ' ｜ 未放球（判定将走「越线人数」）');
+}
+
+/* ---------- 拖拽 ---------- */
+const bw = $('boardWrap');
+let drag = null;
+
+function ptFromEvent(e){
+  const r = bw.getBoundingClientRect();
+  return {x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)),
+          y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))};
+}
+
+bw.addEventListener('pointerdown', e => {
+  const el = e.target.closest('[data-tk]');
+  if (!el) return;
+  e.preventDefault();
+  const k = el.dataset.tk;
+  drag = k === 'ball' ? {ball: true, el: el} : {i: +k, el: el};
+  el.classList.add('dragging');
+  try { el.setPointerCapture(e.pointerId); } catch (_) {}
 });
 
-// ---------- 问答 ----------
-$('askBtn').addEventListener('click', ask);
-$('question').addEventListener('keydown', e => { if (e.key === 'Enter') ask(); });
+bw.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const p = ptFromEvent(e);
+  if (drag.ball) { BF.ball = p; drag.el.style.left = (p.x*100) + '%'; drag.el.style.top = (p.y*100) + '%'; }
+  else { BF.slots[drag.i].x = p.x; BF.slots[drag.i].y = p.y;
+         drag.el.style.left = (p.x*100) + '%'; drag.el.style.top = (p.y*100) + '%'; }
+});
 
-async function ask(){
-  const q = $('question').value.trim();
-  if (!q || !hasAnalysis) return;
-  $('question').value = '';
-  const log = $('chatlog');
-  if (log.querySelector('.hint')) log.innerHTML = '';
-  log.insertAdjacentHTML('beforeend', `<div class="msg me">我：${escapeHtml(q)}</div>`);
-  const thinking = document.createElement('div');
-  thinking.className = 'msg ai'; thinking.textContent = '分析员：思考中…';
-  log.appendChild(thinking);
-  log.scrollTop = log.scrollHeight;
+bw.addEventListener('pointerup', e => {
+  if (!drag) return;
+  drag.el.classList.remove('dragging');
+  drag = null;
+});
+
+bw.addEventListener('click', e => {
+  const el = e.target.closest('[data-tk]');
+  if (!el || el.dataset.tk === 'ball') return;
+  BF.sel = +el.dataset.tk;
+  drawBoard(); renderBoardEdit();
+});
+
+/* ---------- 选中编辑条 ---------- */
+function renderBoardEdit(){
+  const bar = $('boardEdit');
+  if (BF.sel < 0 || !BF.slots[BF.sel]) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  const s = BF.slots[BF.sel];
+  const opts = (BF.meta ? BF.meta.positions : [])
+    .map(p => '<option value="' + p.code + '"' + (p.code === s.pos ? ' selected' : '') + '>'
+      + p.code + ' ' + p.cn + '</option>').join('');
+  bar.style.display = 'flex';
+  bar.innerHTML =
+    '<span class="hint">选中</span>'
+    + '<span class="tag t' + s.team + '">' + (s.team === 0 ? '我方' : '对手') + '</span>'
+    + (s.name ? '<b>' + escapeHtml(s.name) + '</b>' : '')
+    + '<label class="f" style="flex-direction:row;align-items:center;gap:5px">位置<select id="bdPos">' + opts + '</select></label>'
+    + '<label class="f" style="flex-direction:row;align-items:center;gap:5px">号码<input id="bdNo" type="number" min="1" max="99" value="' + (s.no != null ? s.no : '') + '" style="width:62px"></label>'
+    + '<button class="ghost mini" id="bdFlip">换边</button>'
+    + '<button class="danger mini" id="bdDel">删除</button>';
+  $('bdPos').addEventListener('change', e => { BF.slots[BF.sel].pos = e.target.value; drawBoard(); });
+  $('bdNo').addEventListener('change', e => { BF.slots[BF.sel].no = e.target.value === '' ? null : +e.target.value; drawBoard(); });
+  $('bdFlip').addEventListener('click', () => { BF.slots[BF.sel].team = 1 - BF.slots[BF.sel].team; drawBoard(); renderBoardEdit(); updateBoardHint(); });
+  $('bdDel').addEventListener('click', () => { BF.slots.splice(BF.sel, 1); BF.sel = -1; drawBoard(); renderBoardEdit(); updateBoardHint(); });
+}
+
+/* ---------- 工具按钮 ---------- */
+$('boardPresetBtn').addEventListener('click', () => boardPreset());
+$('boardAddMy').addEventListener('click', () => addSlot(0));
+$('boardAddOpp').addEventListener('click', () => addSlot(1));
+$('boardAddBall').addEventListener('click', () => { BF.ball = {x: .5, y: .5}; drawBoard(); updateBoardHint(); });
+$('boardClear').addEventListener('click', () => { BF.slots = []; BF.ball = null; BF.sel = -1;
+  drawBoard(); renderBoardEdit(); updateBoardHint(); $('boardResult').innerHTML = '<span class="hint">摆好站位后点「分析这个局面」。</span>';
+  $('boardBanner').style.display = 'none'; });
+
+function addSlot(team, extra){
+  const n = BF.slots.filter(s => s.team === team).length;
+  BF.slots.push(Object.assign({
+    team: team, pos: 'CM',
+    x: +(0.3 + (n % 4) * 0.13).toFixed(3),
+    y: team === 0 ? 0.7 - Math.floor(n / 4) * 0.12 : 0.3 + Math.floor(n / 4) * 0.12,
+  }, extra || {}));
+  BF.sel = BF.slots.length - 1;
+  drawBoard(); renderBoardEdit(); updateBoardHint();
+}
+
+$('boardSquadPick').addEventListener('change', async e => {
+  const id = e.target.value; if (!id) return;
+  const res = await getJSON('/api/career/squad/' + id);
+  e.target.value = '';
+  if (!res.ok) return;
+  const p = res.player;
+  addSlot(0, {pos: p.position, no: p.shirt_no, pid: p.id, name: p.name});
+});
+
+/* ---------- 分析 ---------- */
+$('boardAnalyze').addEventListener('click', async () => {
+  if (!BF.slots.length) { setStatus('战术板是空的，先摆几个人'); return; }
+  setStatus('分析中…');
+  const labels = {0: $('boardMyLabel').value.trim() || '我方', 1: $('boardOppLabel').value.trim() || '对手'};
+  const res = await post('/api/tactics/analyze', {
+    slots: BF.slots, ball: BF.ball, my_label: labels[0], opp_label: labels[1]});
+  if (!res.ok) { setStatus('失败：' + res.error); return; }
+  BF.lastResult = res.analysis;
+  $('boardBanner').style.display = 'block';
+  $('boardBanner').textContent = res.summary;
+  renderRowsInto($('boardResult'), res.analysis, labels);
+  highlightGap(res.analysis.gap_channel);
+  $('boardAdviseBtn').disabled = false;
+  $('bquestion').disabled = false; $('baskBtn').disabled = false;
+  setSourceHint('战术板（' + labels[0] + ' vs ' + labels[1] + '）');
+  setStatus('分析完成');
+});
+
+function highlightGap(ch){
+  $('boardWrap').querySelectorAll('.zone-hl').forEach(el => el.remove());
+  if (!ch) return;
+  const map = {'左': [0, 33.33], '中': [33.33, 33.34], '右': [66.66, 33.34]};
+  const m = map[ch]; if (!m) return;
+  const d = document.createElement('div');
+  d.className = 'zone-hl';
+  d.style.left = m[0] + '%'; d.style.width = m[1] + '%';
+  $('boardWrap').appendChild(d);
+}
+
+/* ---------- 阵容存档 ---------- */
+$('boardSave').addEventListener('click', async () => {
+  if (!BF.slots.length) { setStatus('空战术板不必存'); return; }
+  const name = prompt('给这套阵容起个名字：', today() + ' 的阵型');
+  if (!name) return;
+  const res = await post('/api/career/formations', {
+    name: name, my_label: $('boardMyLabel').value.trim(), opp_label: $('boardOppLabel').value.trim(),
+    slots: BF.slots, ball: BF.ball});
+  if (!res.ok) { setStatus('保存失败：' + res.error); return; }
+  setStatus('已存为「' + res.formation.name + '」');
+  await loadPickers();
+  $('boardLoad').value = res.formation.id;
+  $('boardDelForm').style.display = 'inline-block';
+});
+
+$('boardLoad').addEventListener('change', async e => {
+  const id = e.target.value;
+  $('boardDelForm').style.display = id ? 'inline-block' : 'none';
+  if (!id) return;
+  const res = await getJSON('/api/career/formations/' + id);
+  if (!res.ok) { setStatus('读取失败：' + res.error); return; }
+  const f = res.formation;
+  BF.slots = (f.slots || []).map(s => Object.assign({}, s));
+  BF.ball = f.ball ? Object.assign({}, f.ball) : null;
+  BF.sel = -1;
+  $('boardMyLabel').value = f.my_label || '我方';
+  $('boardOppLabel').value = f.opp_label || '对手';
+  drawBoard(); renderBoardEdit(); updateBoardHint();
+  setStatus('已载入「' + f.name + '」');
+});
+
+$('boardDelForm').addEventListener('click', async () => {
+  const id = $('boardLoad').value; if (!id) return;
+  if (!confirm('确定删除这套阵容？')) return;
+  await req('/api/career/formations/' + id, 'DELETE');
+  $('boardLoad').value = ''; $('boardDelForm').style.display = 'none';
+  await loadPickers(); setStatus('已删除');
+});
+
+/* ================================================================
+   ③ 我的球队
+   ================================================================ */
+const SQ = {rules: null, list: [], editing: null};
+
+async function loadSquadRules(){
+  if (SQ.rules) return;
+  const r = await getJSON('/api/career/meta');
+  SQ.rules = r;
+  $('sqPos').innerHTML = r.positions.map(p => '<option>' + p + '</option>').join('');
+  $('sqAttrs').innerHTML = r.attrs.map(k =>
+    '<div class="sl-row"><span>' + r.attrs_cn[k] + '</span>'
+    + '<input type="range" id="at-' + k + '" min="1" max="99" value="60">'
+    + '<b id="atv-' + k + '">60</b></div>').join('');
+  r.attrs.forEach(k => {
+    $('at-' + k).addEventListener('input', () => { $('atv-' + k).textContent = $('at-' + k).value; previewOverall(); });
+  });
+  $('sqPos').addEventListener('change', previewOverall);
+  previewOverall();
+}
+
+function currentAttrs(){
+  const o = {};
+  (SQ.rules ? SQ.rules.attrs : []).forEach(k => { o[k] = +$('at-' + k).value; });
+  return o;
+}
+/* 总评**不在前端算**：拖滑块时问后端 /api/career/rate（规范第 4 条：后端只负责计算）。
+   这里原来有一份 calcOverall()，和后端 career/ratings.py 是同一个公式的两份实现，
+   还得靠「两边都用四舍五入」人工对齐才不会出现 84 / 85 的鬼影 —— 现在公式只留后端一份。 */
+let rateTimer = null, rateSeq = 0;
+function previewOverall(){
+  if (!SQ.rules) return;
+  clearTimeout(rateTimer);
+  rateTimer = setTimeout(askRate, 90);      // 拖动过程中不狂发请求，停手 90ms 再问
+}
+async function askRate(){
+  const seq = ++rateSeq;
+  const pos = $('sqPos').value;
+  const r = await post('/api/career/rate', Object.assign({position: pos}, currentAttrs()))
+                     .catch(() => null);
+  if (seq !== rateSeq || !r || !r.ok) return;    // 过期响应直接丢，避免乱序覆盖
+  $('sqOverall').textContent = r.overall;
+  $('sqBest').textContent = (r.best_position && r.best_position !== pos)
+    ? ('（同能力下 ' + r.best_position + ' 位可达 ' + r.best_overall + '）') : '';
+}
+
+function fillForm(p){
+  SQ.editing = p ? p.id : null;
+  $('sqName').value = p ? p.name : '';
+  $('sqPos').value = p ? (p.position || 'CM') : 'CM';
+  $('sqNo').value = p && p.shirt_no != null ? p.shirt_no : '';
+  $('sqAge').value = p && p.age != null ? p.age : '';
+  $('sqFoot').value = p && p.foot ? p.foot : '右脚';
+  $('sqPotential').value = p && p.potential != null ? p.potential : '';
+  $('sqNote').value = p ? (p.note || '') : '';
+  SQ.rules.attrs.forEach(k => { const v = p ? p[k] : 60; $('at-' + k).value = v; $('atv-' + k).textContent = v; });
+  $('sqDelete').style.display = p ? 'inline-block' : 'none';
+  $('sqHint').textContent = p ? ('编辑中：' + p.name) : '新建球员';
+  previewOverall();
+  $('sqChartWrap').innerHTML = '';
+  if (p) loadSnapshots(p.id, p.name);
+}
+
+async function loadSquad(){
+  const r = await getJSON('/api/career/squad');
+  SQ.list = r.players || [];
+  $('sqCount').textContent = '共 ' + SQ.list.length + ' 人';
+  if (!SQ.list.length) {
+    $('sqList').innerHTML = '<span class="hint">还没有自建球员。点「新建球员」开始。</span>';
+  } else {
+    $('sqList').innerHTML = SQ.list.map(p =>
+      '<div class="prow' + (SQ.editing === p.id ? ' on' : '') + '" data-id="' + p.id + '">'
+      + '<span class="ovr">' + p.overall + '</span>'
+      + '<span class="nm">' + escapeHtml(p.name) + '</span>'
+      + '<span class="tag">' + escapeHtml(p.position || '') + '</span>'
+      + '<span class="cl">' + (p.shirt_no != null ? '#' + p.shirt_no : '') + '</span></div>').join('');
+    $('sqList').querySelectorAll('.prow').forEach(el => el.addEventListener('click', () => {
+      const p = SQ.list.find(x => String(x.id) === el.dataset.id); if (p) { fillForm(p); loadSquad(); }
+    }));
+  }
+}
+
+$('sqNew').addEventListener('click', () => fillForm(null));
+
+$('sqSave').addEventListener('click', async () => {
+  const body = Object.assign({
+    name: $('sqName').value.trim(), position: $('sqPos').value,
+    shirt_no: $('sqNo').value === '' ? null : +$('sqNo').value,
+    age: $('sqAge').value === '' ? null : +$('sqAge').value,
+    foot: $('sqFoot').value,
+    potential: $('sqPotential').value === '' ? null : +$('sqPotential').value,
+    note: $('sqNote').value.trim(),
+  }, currentAttrs());
+  if (!body.name) { setStatus('请填球员姓名'); return; }
+  const res = SQ.editing ? await req('/api/career/squad/' + SQ.editing, 'PUT', body)
+                         : await post('/api/career/squad', body);
+  if (!res.ok) { setStatus('保存失败：' + res.error); return; }
+  setStatus('已保存：' + res.player.name);
+  await loadSquad();
+  await loadPickers();
+  fillForm(res.player);
+});
+
+$('sqDelete').addEventListener('click', async () => {
+  if (!SQ.editing) return;
+  if (!confirm('删除该球员？\n\n他打过的比赛记录会保留（作为历史球员），不会抹掉战绩。')) return;
+  await req('/api/career/squad/' + SQ.editing, 'DELETE');
+  SQ.editing = null; fillForm(null); await loadSquad(); await loadPickers();
+  setStatus('已删除');
+});
+
+async function loadSnapshots(pid, name){
+  const r = await getJSON('/api/career/squad/' + pid + '/snapshots');
+  const s = r.snapshots || [];
+  $('sqChartWrap').innerHTML = '<div class="hint">能力成长（' + s.length + ' 条快照）</div>'
+    + growthChart(s, 660, 130);
+}
+
+/* ================================================================
+   ④ 比赛记录
+   ================================================================ */
+const MT = {list: [], editing: null, squad: []};
+
+function rebuildDatalist(players){
+  MT.squad = players || [];
+  let dl = $('squadDatalist');
+  if (!dl) { dl = document.createElement('datalist'); dl.id = 'squadDatalist'; document.body.appendChild(dl); }
+  dl.innerHTML = MT.squad.map(p => '<option value="' + escapeHtml(p.name) + '">').join('');
+}
+
+async function loadMatches(){
+  const r = await getJSON('/api/career/matches');
+  MT.list = r.matches || [];
+  $('mtCount').textContent = '共 ' + MT.list.length + ' 场';
+  if (!MT.list.length) {
+    $('mtList').innerHTML = '<span class="hint">还没有比赛记录。点「新建比赛」开始。</span>';
+    newMatch();
+    return;
+  }
+  $('mtList').innerHTML = MT.list.map(m => {
+    const res = m.goals_for > m.goals_against ? '胜' : (m.goals_for === m.goals_against ? '平' : '负');
+    const cls = res === '胜' ? 'w' : (res === '平' ? 'd' : 'l');
+    return '<div class="prow" data-id="' + m.id + '">'
+      + '<span class="tag ' + cls + '">' + res + '</span>'
+      + '<span class="nm">' + escapeHtml(m.my_team) + ' <b>' + m.goals_for + '-' + m.goals_against + '</b> '
+      + escapeHtml(m.opponent) + '</span>'
+      + '<span class="cl">' + escapeHtml(m.played_on) + '</span></div>';
+  }).join('');
+  $('mtList').querySelectorAll('.prow').forEach(el => el.addEventListener('click', () => {
+    const m = MT.list.find(x => String(x.id) === el.dataset.id); if (m) editMatch(m);
+  }));
+}
+
+function appRow(a){
+  a = a || {};
+  const div = document.createElement('div');
+  div.className = 'grid3';
+  div.style.cssText = 'margin-bottom:6px;grid-template-columns:1.4fr 1.6fr .9fr .6fr .6fr .6fr auto;align-items:center';
+  div.innerHTML =
+    '<select class="ap-side"><option value="me"' + (a.side !== 'opp' ? ' selected' : '') + '>我方</option>'
+    + '<option value="opp"' + (a.side === 'opp' ? ' selected' : '') + '>对手</option></select>'
+    + '<input class="ap-name" list="squadDatalist" placeholder="球员名" value="' + escapeHtml(a.player_name || '') + '">'
+    + '<input class="ap-pos" placeholder="位置" value="' + escapeHtml(a.position || '') + '">'
+    + '<input class="ap-min" type="number" min="0" max="120" placeholder="分钟" value="' + (a.minutes != null ? a.minutes : 90) + '">'
+    + '<input class="ap-g" type="number" min="0" placeholder="球" value="' + (a.goals != null ? a.goals : 0) + '">'
+    + '<input class="ap-a" type="number" min="0" placeholder="助" value="' + (a.assists != null ? a.assists : 0) + '">'
+    + '<span style="display:flex;gap:4px"><input class="ap-r" type="number" min="0" max="10" step="0.1" placeholder="评分" '
+    + 'value="' + (a.rating != null ? a.rating : '') + '" style="width:62px">'
+    + '<button class="danger mini ap-del">×</button></span>';
+  div.querySelector('.ap-del').addEventListener('click', () => div.remove());
+  return div;
+}
+
+function collectApps(){
+  return Array.from($('mtApps').querySelectorAll('div.grid3')).map(div => ({
+    side: div.querySelector('.ap-side').value,
+    player_name: div.querySelector('.ap-name').value.trim(),
+    position: div.querySelector('.ap-pos').value.trim(),
+    minutes: +div.querySelector('.ap-min').value || 0,
+    goals: +div.querySelector('.ap-g').value || 0,
+    assists: +div.querySelector('.ap-a').value || 0,
+    rating: div.querySelector('.ap-r').value === '' ? null : +div.querySelector('.ap-r').value,
+    player_id: (MT.squad.find(p => p.name === div.querySelector('.ap-name').value.trim()) || {}).id || null,
+  })).filter(a => a.player_name);
+}
+
+function newMatch(){
+  MT.editing = null;
+  $('mtDate').value = today(); $('mtComp').value = ''; $('mtMy').value = ''; $('mtOpp').value = '';
+  $('mtGF').value = 0; $('mtGA').value = 0; $('mtNote').value = ''; $('mtFormation').value = '';
+  $('mtApps').innerHTML = ''; $('mtApps').appendChild(appRow({side:'me'}));
+  $('mtHint').textContent = '新建比赛';
+  $('mtDelete').style.display = 'none';
+}
+
+function editMatch(m){
+  MT.editing = m.id;
+  $('mtDate').value = m.played_on || ''; $('mtComp').value = m.competition || '';
+  $('mtMy').value = m.my_team || ''; $('mtOpp').value = m.opponent || '';
+  $('mtGF').value = m.goals_for; $('mtGA').value = m.goals_against;
+  $('mtNote').value = m.note || ''; $('mtFormation').value = m.formation_id || '';
+  $('mtApps').innerHTML = '';
+  (m.appearances || []).forEach(a => $('mtApps').appendChild(appRow(a)));
+  if (!(m.appearances || []).length) $('mtApps').appendChild(appRow({side:'me'}));
+  $('mtHint').textContent = '编辑中：' + m.played_on + ' ' + m.my_team + ' vs ' + m.opponent;
+  $('mtDelete').style.display = 'inline-block';
+}
+
+$('mtNew').addEventListener('click', newMatch);
+$('mtAddApp').addEventListener('click', () => $('mtApps').appendChild(appRow({side:'me'})));
+$('mtAddSquad').addEventListener('click', () => {
+  if (!MT.squad.length) { setStatus('「我的球队」里还没有球员'); return; }
+  $('mtApps').innerHTML = '';
+  MT.squad.forEach(p => $('mtApps').appendChild(appRow({
+    side:'me', player_name:p.name, position:p.position, minutes:90})));
+});
+
+$('mtSave').addEventListener('click', async () => {
+  const body = {
+    played_on: $('mtDate').value || today(), competition: $('mtComp').value.trim(),
+    my_team: $('mtMy').value.trim(), opponent: $('mtOpp').value.trim(),
+    goals_for: +$('mtGF').value || 0, goals_against: +$('mtGA').value || 0,
+    formation_id: $('mtFormation').value || null, note: $('mtNote').value.trim(),
+    appearances: collectApps(),
+  };
+  const res = MT.editing ? await req('/api/career/matches/' + MT.editing, 'PUT', body)
+                         : await post('/api/career/matches', body);
+  if (!res.ok) { setStatus('保存失败：' + res.error); return; }
+  setStatus('已保存比赛');
+  await loadMatches(); editMatch(res.match);
+});
+
+$('mtDelete').addEventListener('click', async () => {
+  if (!MT.editing || !confirm('确定删除这场比赛？')) return;
+  await req('/api/career/matches/' + MT.editing, 'DELETE');
+  newMatch(); await loadMatches(); setStatus('已删除');
+});
+
+/* ================================================================
+   ⑤ 生涯
+   ================================================================ */
+async function loadCareer(){
+  const r = await getJSON('/api/career/summary');
+  const rec = r.record || {};
+  const stat = (v, l) => '<div class="stat"><b>' + v + '</b><span>' + l + '</span></div>';
+  $('crStats').innerHTML =
+    stat(rec.played || 0, '场次') + stat(rec.won || 0, '胜') + stat(rec.drawn || 0, '平')
+    + stat(rec.lost || 0, '负') + stat((rec.win_rate || 0) + '%', '胜率')
+    + stat(rec.goals_for || 0, '进球') + stat(rec.goals_against || 0, '失球')
+    + stat(rec.avg_for || 0, '场均进球');
+
+  const roster = r.roster || [];
+  if (!roster.length) {
+    $('crRoster').innerHTML = '<span class="hint">还没有球员数据。</span>';
+  } else {
+    $('crRoster').innerHTML = '<table class="rank"><thead><tr><th>球员</th><th>位置</th><th>总评</th>'
+      + '<th style="text-align:right">出场</th><th style="text-align:right">进球</th>'
+      + '<th style="text-align:right">助攻</th><th style="text-align:right">均分</th></tr></thead><tbody>'
+      + roster.map(x => '<tr style="cursor:default"><td>' + escapeHtml(x.name) + '</td>'
+        + '<td>' + escapeHtml(x.position || '—') + '</td>'
+        + '<td>' + (x.overall != null ? x.overall : '—') + '</td>'
+        + '<td style="text-align:right">' + x.apps + '</td>'
+        + '<td style="text-align:right"><b>' + x.goals + '</b></td>'
+        + '<td style="text-align:right">' + x.assists + '</td>'
+        + '<td style="text-align:right">' + (x.avg_rating != null ? x.avg_rating : '—') + '</td></tr>').join('')
+      + '</tbody></table>';
+  }
+
+  const sc = r.top_scorers || [];
+  $('crScorers').innerHTML = sc.length
+    ? '<table class="rank"><thead><tr><th>#</th><th>球员</th>'
+      + '<th style="text-align:right">进球</th><th style="text-align:right">助攻</th></tr></thead><tbody>'
+      + sc.map((x, i) => '<tr style="cursor:default"><td>' + (i+1) + '</td><td>' + escapeHtml(x.name) + '</td>'
+        + '<td style="text-align:right"><b>' + x.goals + '</b></td>'
+        + '<td style="text-align:right">' + x.assists + '</td></tr>').join('') + '</tbody></table>'
+    : '<span class="hint">还没有进球记录。</span>';
+
+  const tl = r.timeline || [];
+  $('crTimeline').innerHTML = tl.length
+    ? tl.map(m => {
+        const res = m.result;
+        const cls = res === '胜' ? 'w' : (res === '平' ? 'd' : 'l');
+        return '<div class="it"><span class="tag ' + cls + '">' + res + '</span> '
+          + '<b>' + m.goals_for + '-' + m.goals_against + '</b> '
+          + escapeHtml(m.my_team) + ' vs ' + escapeHtml(m.opponent)
+          + ' <span class="hint">' + escapeHtml(m.played_on || '')
+          + (m.competition ? ' ｜ ' + escapeHtml(m.competition) : '') + '</span></div>';
+      }).join('')
+    : '<span class="hint">还没有比赛。</span>';
+
+  const sel = $('crChartSel');
+  const players = roster.filter(x => x.player_id);
+  const keep = sel.value;
+  sel.innerHTML = players.length
+    ? players.map(p => '<option value="' + p.player_id + '">' + escapeHtml(p.name) + '</option>').join('')
+    : '<option value="">（无球员）</option>';
+  if (keep && players.some(p => String(p.player_id) === keep)) sel.value = keep;
+  if (players.length) loadCareerChart(sel.value);
+  else $('crChart').innerHTML = '<span class="hint">先在「我的球队」建球员，改动能力后这里会出现曲线。</span>';
+}
+
+$('crChartSel').addEventListener('change', e => loadCareerChart(e.target.value));
+
+async function loadCareerChart(pid){
+  if (!pid) return;
+  const r = await getJSON('/api/career/squad/' + pid + '/snapshots');
+  $('crChart').innerHTML = growthChart(r.snapshots || [], 660, 170);
+}
+
+/* 成长曲线（内联 SVG，零依赖） */
+function growthChart(snaps, W, H){
+  if (!snaps || snaps.length === 0) return '<span class="hint">还没有快照。</span>';
+  if (snaps.length === 1) {
+    return '<span class="hint">目前只有 1 个快照（总评 ' + snaps[0].overall
+      + '）。再改动几次能力值，这里就会画出曲线。</span>';
+  }
+  const pad = {l: 34, r: 14, t: 16, b: 26};
+  const vals = snaps.map(s => s.overall);
+  let lo = Math.min.apply(null, vals) - 2, hi = Math.max.apply(null, vals) + 2;
+  if (hi - lo < 6) { hi += 3; lo -= 3; }
+  const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+  const X = i => pad.l + iw * (i / (snaps.length - 1));
+  const Y = v => pad.t + ih * (1 - (v - lo) / (hi - lo));
+  const pts = snaps.map((s, i) => X(i) + ',' + Y(s.overall)).join(' ');
+  const dots = snaps.map((s, i) =>
+    '<circle cx="' + X(i) + '" cy="' + Y(s.overall) + '" r="3.2" fill="#534ab7"/>').join('');
+  const labels = snaps.map((s, i) =>
+    '<text x="' + X(i) + '" y="' + (H - 8) + '" font-size="10" fill="#7a7873" text-anchor="middle">'
+    + escapeHtml((s.taken_at || '').slice(5, 10)) + '</text>').join('');
+  const first = snaps[0], last = snaps[snaps.length - 1];
+  const delta = last.overall - first.overall;
+  const sign = delta > 0 ? '+' + delta : (delta === 0 ? '持平' : String(delta));
+  return '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto" role="img">'
+    + '<line x1="' + pad.l + '" y1="' + (pad.t + ih) + '" x2="' + (W - pad.r) + '" y2="' + (pad.t + ih)
+    + '" stroke="#e5e3dd" stroke-width="1"/>'
+    + '<line x1="' + pad.l + '" y1="' + pad.t + '" x2="' + pad.l + '" y2="' + (pad.t + ih)
+    + '" stroke="#e5e3dd" stroke-width="1"/>'
+    + '<text x="6" y="' + (pad.t + 4) + '" font-size="10" fill="#7a7873">' + hi + '</text>'
+    + '<text x="6" y="' + (pad.t + ih) + '" font-size="10" fill="#7a7873">' + lo + '</text>'
+    + '<polyline points="' + pts + '" fill="none" stroke="#534ab7" stroke-width="2"'
+    + ' stroke-linecap="round" stroke-linejoin="round"/>' + dots + labels
+    + '<text x="' + (W - pad.r) + '" y="' + (pad.t + 2) + '" font-size="11" fill="#0f6e56" text-anchor="end">'
+    + '总评 ' + first.overall + ' → ' + last.overall + '（' + sign + '）</text></svg>';
+}
+
+/* ================================================================
+   ⑥ 球员库
+   ================================================================ */
+const RANK_KEYS = {overall:'总评', potential:'潜力', pace:'速度', shooting:'射门',
+  passing:'传球', dribbling:'盘带', defending:'防守', physical:'身体',
+  value_eur:'身价', wage_eur:'周薪', age:'年龄'};
+const SIX_CN = {pace:'速度', shooting:'射门', passing:'传球',
+  dribbling:'盘带', defending:'防守', physical:'身体'};
+
+$('pSearchBtn').addEventListener('click', doPlayerSearch);
+$('pQuery').addEventListener('keydown', e => { if (e.key === 'Enter') doPlayerSearch(); });
+$('pRankBtn').addEventListener('click', loadRank);
+$('pRankBy').addEventListener('change', loadRank);
+
+async function doPlayerSearch(){
+  const q = $('pQuery').value.trim();
+  if (!q) return;
+  const box = $('pResults');
+  box.innerHTML = '<span class="hint">搜索中…</span>';
+  setStatus('搜索球员…');
   try {
-    const res = await post('/api/ask', { question: q });
-    thinking.textContent = '分析员：' + (res.ok ? res.answer : ('失败：' + res.error));
-  } catch (e) { thinking.textContent = '分析员：失败：' + e.message; }
-  log.scrollTop = log.scrollHeight;
+    const res = await getJSON('/api/player/search?q=' + encodeURIComponent(q) + '&limit=20');
+    if (!res.ok) throw new Error(res.error || '搜索失败');
+    if (!res.players.length) { box.innerHTML = '<span class="hint">没有匹配的球员。</span>'; setStatus('就绪'); return; }
+    box.innerHTML = '<div class="plist">' + res.players.map((p, i) =>
+      '<div class="prow" data-i="' + i + '"><span class="ovr">' + (p.overall != null ? p.overall : '—') + '</span>'
+      + '<span class="nm">' + escapeHtml(p.display) + '</span>'
+      + '<span class="cl">' + escapeHtml(p.club || '—') + '</span></div>').join('') + '</div>';
+    box.querySelectorAll('.prow').forEach(el => {
+      el.addEventListener('click', () => showCard(res.players[+el.dataset.i].id));
+    });
+    setStatus('找到 ' + res.count + ' 人');
+  } catch (e) { box.innerHTML = '<span class="hint">失败：' + escapeHtml(e.message) + '</span>'; }
 }
 
-// ---------- 工具 ----------
-async function post(url, body){
-  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-  return r.json();
+async function showCard(sid){
+  const card = $('pCard'); card.style.display = 'block';
+  $('pCardBody').innerHTML = '<span class="hint">加载中…（联网取头像与简介，约 2 秒）</span>';
+  setStatus('加载球员卡…');
+  try {
+    const res = await getJSON('/api/player/' + encodeURIComponent(sid));
+    if (!res.ok) throw new Error(res.error || '加载失败');
+    $('pCardBody').innerHTML = renderCard(res.player);
+    setStatus('就绪');
+    card.scrollIntoView({behavior:'smooth', block:'nearest'});
+  } catch (e) { $('pCardBody').innerHTML = '<span class="hint">失败：' + escapeHtml(e.message) + '</span>'; }
 }
-function escapeHtml(s){ const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function bar(label, val){
+  const v = (val == null) ? 0 : Math.max(0, Math.min(100, val));
+  return '<div class="bar"><span>' + label + '</span>'
+    + '<div class="track"><div class="fill" style="width:' + v + '%"></div></div>'
+    + '<b>' + (val != null ? val : '—') + '</b></div>';
+}
+function money(v){
+  if (v == null) return '—';
+  if (v >= 1e8) return (v / 1e8).toFixed(1) + ' 亿€';
+  if (v >= 1e4) return Math.round(v / 1e4) + ' 万€';
+  return v + ' €';
+}
+function renderCard(p){
+  const photo = p.photo
+    ? '<img src="' + escapeHtml(p.photo) + '" alt="" onerror="this.style.visibility=\'hidden\'">'
+    : '<div style="width:74px;height:74px;display:flex;align-items:center;justify-content:center;'
+      + 'color:var(--muted);border:1px dashed var(--line);border-radius:10px">无图</div>';
+  const pos = (p.positions || []).map(x => '<span class="pos">' + escapeHtml(x) + '</span>').join('');
+  return '<div class="pc-head">' + photo
+    + '<div style="flex:1"><div class="pc-name">' + escapeHtml(p.display)
+    + ' <span class="ovr">总评 ' + (p.overall != null ? p.overall : '—') + '</span></div>'
+    + '<div class="pc-sub">' + escapeHtml(p.name) + '</div>'
+    + '<div class="pc-sub">' + escapeHtml(p.club || '—') + ' ｜ ' + escapeHtml(p.nationality || '—') + ' ｜ ' + pos + '</div>'
+    + '<div class="pc-sub">潜力 ' + (p.potential != null ? p.potential : '—')
+    + ' ｜ 身价 ' + money(p.value_eur) + ' ｜ 周薪 ' + money(p.wage_eur)
+    + ' ｜ 年龄 ' + (p.age != null ? p.age : '—') + ' ｜ ' + (p.height_cm != null ? p.height_cm : '—')
+    + 'cm / ' + (p.weight_kg != null ? p.weight_kg : '—') + 'kg ｜ ' + escapeHtml(p.foot || '—') + '</div></div></div>'
+    + '<div class="bars">' + Object.keys(SIX_CN).map(k => bar(SIX_CN[k], p[k])).join('') + '</div>'
+    + (p.description ? '<div class="out" style="margin-top:10px">' + escapeHtml(p.description) + '</div>' : '');
+}
+
+async function loadRank(){
+  const by = $('pRankBy').value;
+  const pos = $('pRankPos').value.trim();
+  const tb = $('pRankTable');
+  tb.innerHTML = '<span class="hint">加载中…</span>';
+  setStatus('加载榜单…');
+  try {
+    const res = await getJSON('/api/player/rank?by=' + encodeURIComponent(by) + '&limit=20'
+      + (pos ? '&pos=' + encodeURIComponent(pos) : ''));
+    if (!res.ok) throw new Error(res.error || '加载失败');
+    if (!res.players.length) { tb.innerHTML = '<span class="hint">没有匹配的球员。</span>'; setStatus('就绪'); return; }
+    const label = RANK_KEYS[by] || by;
+    tb.innerHTML = '<table class="rank"><thead><tr><th>#</th><th>球员</th><th>俱乐部</th>'
+      + '<th style="text-align:right">' + label + '</th></tr></thead><tbody>'
+      + res.players.map((p, i) => '<tr data-i="' + i + '"><td>' + (i + 1) + '</td>'
+        + '<td>' + escapeHtml(p.display) + '</td><td>' + escapeHtml(p.club || '—') + '</td>'
+        + '<td style="text-align:right"><b>' + (p[by] != null ? p[by] : '—') + '</b></td></tr>').join('')
+      + '</tbody></table>';
+    tb.querySelectorAll('tbody tr').forEach(el => {
+      el.addEventListener('click', () => showCard(res.players[+el.dataset.i].id));
+    });
+    setStatus('就绪');
+  } catch (e) { tb.innerHTML = '<span class="hint">失败：' + escapeHtml(e.message) + '</span>'; }
+}
 </script>
 </body>
 </html>

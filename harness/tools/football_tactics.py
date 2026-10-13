@@ -58,19 +58,32 @@ def _format(payload: dict) -> str:
     lines = [f"画面分析（耗时 {payload.get('elapsed_ms')} ms）："]
     lines.append(f"  球员 {c['players']} 人（T0 {c['team0']} / T1 {c['team1']}）")
 
+    # 方向词由分析层给出（真实画面纵深=横轴、战术板纵深=画布纵轴），这里照抄不自己解释
+    axis = s.get("axis") or {}
+    depth_labels = axis.get("depth_labels") or ["上", "中", "下"]
     for side, label in (("0", "T0"), ("1", "T1")):
         z = (s.get("dist") or {}).get(side)
         if z:
-            lines.append(f"  {label} 纵向分布（上/中/下）：{z['上']} / {z['中']} / {z['下']}")
+            lines.append(f"  {label} 纵深分布（{'/'.join(depth_labels)}）："
+                         f"{' / '.join(str(v) for v in z)}")
 
     b = s["ball"]
-    lines.append(f"  球：{'在 ' + str(b['zone']) + '区 · ' + str(b['channel']) + '通道' if b['present'] else '未检出'}")
+    if b["present"]:
+        where = f"在「{b.get('depth_band')}」纵深段 · 「{b.get('channel_band')}」通道"
+        if b.get("owner") is not None:
+            where += f"，在 T{b['owner']} 球员脚下"
+        lines.append(f"  球：{where}")
+    else:
+        lines.append("  球：未检出")
 
     if s["attacking_team"] is None:
         lines.append(f"  攻防判定：相持（{s.get('reason') or ''}）")
     else:
+        how = {"ball": "控球判定", "position": "站位粗判"}.get(s.get("basis"), "")
+        # 真实画面单帧给不出推进方向（direction=None），这时**不要**印出 "None"
+        dir_txt = f"，推进方向「{s['direction']}」" if s.get("direction") else ""
         lines.append(f"  攻防判定：T{s['attacking_team']} 进攻、T{s.get('defending_team')} 防守"
-                     f"，推进方向「{s.get('direction')}」（{s.get('reason') or ''}）")
+                     f"{dir_txt}（{how}：{s.get('reason') or ''}）")
         if s.get("gap_channel"):
             lines.append(f"  空当通道：{s['gap_channel']}")
 

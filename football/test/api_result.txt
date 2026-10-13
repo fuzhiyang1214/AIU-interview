@@ -1,0 +1,80 @@
+[载入 app] 4.40s
+
+
+========================================================================================================
+① 页面与静态接口
+========================================================================================================
+[OK] GET    /                                              200 (期望 200)   179.6ms  
+[OK] GET    /api/state                                     200 (期望 200)     0.3ms  has_analysis=False
+[OK] GET    /api/tactics/meta                              200 (期望 200)     0.2ms  
+
+========================================================================================================
+② 球员库（online=0 强制离线，避免联网等待）
+========================================================================================================
+[OK] GET    /api/player/stats                              200 (期望 200)   399.0ms  
+[OK] GET    /api/player/search?q=messi&online=0            200 (期望 200)    11.3ms  count=6
+[OK] GET    /api/player/search                             400 (期望 400)     0.4ms  预期错误分支：缺少 q 参数
+[OK] GET    /api/player/rank?by=overall&limit=5&online=0   200 (期望 200)    14.4ms  count=5
+[OK] GET    /api/player/rank?by=pace&pos=ST&limit=3&online=0 200 (期望 200)    12.2ms  count=3
+[OK] GET    /api/player/158023?online=0                    200 (期望 200)     0.6ms  
+[OK] GET    /api/player/99999999?online=0                  404 (期望 404)     0.4ms  预期错误分支：查无此人（id=99999999）
+
+========================================================================================================
+③ 战术板（不依赖 torch / 网络）
+========================================================================================================
+[OK] POST   /api/tactics/analyze                           400 (期望 400)     0.5ms  预期错误分支：战术板上还没有球员，先摆几个人再分析
+[OK] POST   /api/tactics/analyze                           200 (期望 200)     0.7ms  
+[OK] POST   /api/tactics/analyze                           200 (期望 200)     0.4ms  
+
+========================================================================================================
+④ 我的生涯 —— 完整 CRUD（写临时库）
+========================================================================================================
+[OK] GET    /api/career/meta                               200 (期望 200)     0.3ms  
+[OK] POST   /api/career/rate                               200 (期望 200)     0.4ms  best_position=LB overall=60
+[OK] POST   /api/career/rate                               200 (期望 200)     0.3ms  best_position=LW overall=81
+[OK] GET    /api/career/squad                              200 (期望 200)     3.8ms  
+[OK] POST   /api/career/squad                              400 (期望 400)     0.5ms  预期错误分支：球员姓名不能为空
+[OK] POST   /api/career/squad                              200 (期望 200)    98.0ms  
+[OK] GET    /api/career/squad/1                            200 (期望 200)     2.5ms  
+[OK] PUT    /api/career/squad/1                            200 (期望 200)    80.0ms  
+[OK] GET    /api/career/squad/1/snapshots                  200 (期望 200)     2.2ms  
+[OK] GET    /api/career/squad/999999                       404 (期望 404)     2.6ms  预期错误分支：球员不存在（id=999999）
+[OK] DELETE /api/career/squad/999999                       404 (期望 404)     2.8ms  预期错误分支：球员不存在（id=999999）
+[OK] POST   /api/career/formations                         400 (期望 400)     0.4ms  预期错误分支：阵容名称不能为空
+[OK] POST   /api/career/formations                         200 (期望 200)    77.8ms  
+[OK] GET    /api/career/formations                         200 (期望 200)     2.8ms  
+[OK] GET    /api/career/formations/1                       200 (期望 200)     3.4ms  
+[OK] PUT    /api/career/formations/1                       200 (期望 200)    81.4ms  
+[OK] DELETE /api/career/formations/1                       200 (期望 200)    73.2ms  
+[OK] GET    /api/career/formations/999999                  404 (期望 404)     3.1ms  预期错误分支：阵容不存在（id=999999）
+[OK] POST   /api/career/matches                            400 (期望 400)     0.4ms  预期错误分支：我方队名与对手队名都不能为空
+[OK] POST   /api/career/matches                            200 (期望 200)    75.8ms  
+[OK] GET    /api/career/matches                            200 (期望 200)     2.8ms  
+[OK] GET    /api/career/matches/1                          200 (期望 200)     2.6ms  
+[OK] PUT    /api/career/matches/1                          200 (期望 200)    69.7ms  
+[OK] GET    /api/career/matches/999999                     404 (期望 404)     2.3ms  预期错误分支：比赛不存在（id=999999）
+[OK] GET    /api/career/summary                            200 (期望 200)     9.3ms  
+[OK] DELETE /api/career/matches/1                          200 (期望 200)    70.6ms  
+
+========================================================================================================
+⑤ 战术推理（需要本机 Ollama 在跑；不在跑会 500，属正常）
+========================================================================================================
+[OK] POST   /api/ask                                       400 (期望 400)     0.5ms  预期错误分支：问题为空
+[OK] POST   /api/advise                                    200 (期望 200)  3050.2ms  
+[OK] POST   /api/ask                                       200 (期望 200)   763.1ms  
+
+========================================================================================================
+⑥ 图像分析（要加载 YOLO 权重，首帧慢）
+========================================================================================================
+[OK] POST   /api/analyze                                   400 (期望 400)     0.5ms  预期错误分支：缺少 image 字段
+     （用图：yolo\dataset2\images\test\微信图片_20261007144304_3_84.jpg）
+[OK] POST   /api/analyze                                   200 (期望 200)  2867.8ms  
+[OK] GET    /api/state                                     200 (期望 200)     0.4ms  has_analysis=True
+     （用图：football/test/11_tactic_before.png —— 触发「裁到球场」分支）
+[OK] POST   /api/analyze                                   200 (期望 200)   563.9ms  
+[OK] CHECK  unassigned 结构化字段 + 人数守恒   unassigned={'count': 3, 'gk': 2, 'unknown': 1}  players=12 on_pitch=9
+
+========================================================================================================
+结果：47 / 47 通过
+
+临时生涯库已清理：C:\Users\FU\AppData\Local\Temp\career_api_test.db

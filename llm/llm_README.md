@@ -8,7 +8,7 @@
 |---|---|
 | GPU | NVIDIA RTX 5070 Laptop（8151 MB 显存） |
 | 驱动 | 610.74 |
-| 内存 | 24 GB DDR5 |
+| 内存 | 32 GB DDR5 |
 | Ollama | v0.35.1 |
 | 模型 | qwen2.5:7b（7.6B / Q4_K_M / 4.7 GB） |
 | 模型存放 | `D:\OllamaModels`（用 `OLLAMA_MODELS` 从 C 盘迁出） |

@@ -30,6 +30,8 @@ def run(**kwargs) -> str:  # 实现，返回值必须是字符串
 | `http_get.py` | `http_get` | 抓网页并剥离 HTML 标签 |
 | `yolo_detect.py` | `yolo_detect` | **目标检测（复用任务二的 YOLO）** |
 | `football_tactics.py` | `football_tactics` | **足球攻防分析（复用任务五的创作作品）** |
+| `football_players.py` | `football_players` | **球员资料与能力查询（复用任务五的球员库）** |
+| `football_career.py` | `football_career` | **自己的生涯数据查询（复用任务五的生涯库，只读）** |
 
 ## ⚠️ 跨解释器工具：`yolo_detect.py` ｜ `football_tactics.py`
 
@@ -50,6 +52,14 @@ stdout 一行 JSON  →  harness 侧解析成自然语言
 
 **代价**：每次调用都要冷启动一次 Python 并加载模型（首次 ~13 秒，热缓存 ~2.5 秒）。
 这是刻意接受的取舍——改成常驻服务会更快，但两边就耦合了。
+
+> 💡 **`football_players.py` / `football_career.py` 是个例外**：球员库只用 `csv` + `urllib`，
+> 生涯库只用 `sqlite3`，**全是纯标准库**，系统 Python 直接就能跑，所以它们**不走子进程桥接**，
+> 而是直接 `import` —— 更快，也少一层进程。
+> 判断标准很简单：**要不要 torch？** 要 → 桥接；不要 → 直接 import。
+>
+> 另外 `football_career` 刻意**只做读**：新建球员、录入比赛这些写动作留在前端表单里 ——
+> 让模型自由填年龄 / 能力值 / 比分，很容易写进脏数据。Agent 负责读和解读，不负责录入。
 
 **相关文件**：
 

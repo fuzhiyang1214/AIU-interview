@@ -45,19 +45,31 @@ def _load(source: str):
 
 
 def _summary(analysis: dict) -> dict:
-    """抽出对上层（模型 / 前端）有用的字段，别把整包坐标塞出去。"""
+    """抽出对上层（模型 / 前端）有用的字段，别把整包坐标塞出去。
+
+    ⚠️ 字段名与 `vision/pitch.py` 的输出**必须同步**：v3 把 `ball.zone/channel`
+       改成了 `ball.depth_band/channel_band`（因为纵深轴不再固定是画面纵轴），
+       `dist` 也从 dict 变成了 list。改 pitch 的字段名时记得回来一起改。
+    """
+    labels = (analysis.get("axis") or {}).get("labels") or {}
+    ball = analysis["ball"]
     return {
         "counts": analysis["counts"],
         "state": analysis["state"],
         "attacking_team": analysis["attacking_team"],
         "defending_team": analysis["sides"]["defending"],
         "direction": analysis.get("direction"),
+        "basis": analysis.get("basis"),                 # ball(控球) / position(站位) / none
         "reason": analysis.get("reason"),
         "gap_channel": analysis.get("gap_channel"),
-        "dist": analysis.get("dist"),
-        "ball": {"present": analysis["ball"]["present"],
-                 "zone": analysis["ball"]["zone"],
-                 "channel": analysis["ball"]["channel"]},
+        "dist": analysis.get("dist"),                   # {"0":[三段人数],"1":[...]}，顺序同 depth_labels
+        "axis": {"depth_labels": labels.get("depth"), "channel_labels": labels.get("channel")},
+        "ball": {"present": ball["present"],
+                 "depth_band": ball.get("depth_band"),
+                 "channel_band": ball.get("channel_band"),
+                 "owner": ball.get("owner"),            # 控球方队号（球权不明时为 None）
+                 "conf": ball.get("conf")},
+        "crop": analysis.get("crop"),                   # 裁到球场的信息（原图尺寸 / 裁剪框 / 推理尺寸）
     }
 
 
@@ -65,7 +77,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="AI 战术分析师 · 单张分析（输出 JSON）")
     ap.add_argument("--source", default="camera", help="图片路径，或 'camera'")
     ap.add_argument("--conf", type=float, default=0.35)
-    ap.add_argument("--imgsz", type=int, default=1280)
+    ap.add_argument("--imgsz", type=int, default=0,
+                    help="推理尺寸；0=自动（裁到球场后按长边 2.4 倍换算，1280~3200）")
     ap.add_argument("--device", default="cuda:0")
     ap.add_argument("--advise", action="store_true", help="同时生成战术解读（需要 Ollama）")
     ap.add_argument("--save", default=None, help="把带标注的图保存到该路径")
